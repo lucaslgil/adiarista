@@ -1,0 +1,68 @@
+name: adiarista
+description: App para conectar clientes com diaristas, inspirado no Uber.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Supabase
+  supabase_flutter: ^1.10.0
+
+  # State Management
+  provider: ^6.0.0
+
+  # Navigation
+  go_router: ^10.0.0
+
+  # HTTP
+  http: ^1.1.0
+
+  # Local Storage
+  shared_preferences: ^2.2.0
+
+  # UI Components
+  google_fonts: ^6.1.0
+  
+  # Date & Time
+  intl: ^0.19.0
+
+  # Validation
+  email_validator: ^2.1.0
+
+  # Image Picker (for profile photos)
+  image_picker: ^1.0.4
+
+  # Maps (optional for location selection)
+  google_maps_flutter: ^2.5.0
+  geocoding: ^2.1.1
+  geolocator: ^9.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/logo/
+
+  # Fontes Poppins (descomentar quando os arquivos estiverem disponíveis)
+  # fonts:
+  #   - family: Poppins
+  #     fonts:
+  #       - asset: assets/fonts/Poppins-Regular.ttf
+  #       - asset: assets/fonts/Poppins-Bold.ttf
+  #         weight: 700
+  #       - asset: assets/fonts/Poppins-SemiBold.ttf
+  #         weight: 600

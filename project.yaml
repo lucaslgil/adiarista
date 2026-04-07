@@ -1,0 +1,119 @@
+name: adiarista
+
+# Configurações do projeto
+settings:
+  format_version: '1.0'
+  
+# Configuração de Flutter
+flutter:
+  version: '3.0.0'
+  channel: stable
+
+# Configuração de Dart
+dart:
+  version: '2.17.0'
+
+# Dependências do Projeto
+dependencies:
+  # Core
+  flutter:
+    sdk: flutter
+  
+  # Supabase & Backend
+  supabase_flutter: ^1.10.0
+  
+  # State Management
+  provider: ^6.0.0
+  
+  # Navigation
+  go_router: ^10.0.0
+  
+  # HTTP & Networking
+  http: ^1.1.0
+  
+  # Storage
+  shared_preferences: ^2.2.0
+  
+  # UI & Design
+  google_fonts: ^6.1.0
+  
+  # Data & Time
+  intl: ^0.19.0
+  
+  # Validation
+  email_validator: ^2.1.0
+  
+  # Media
+  image_picker: ^1.0.4
+  
+  # Maps & Location (Optional)
+  google_maps_flutter: ^2.5.0
+  geocoding: ^2.1.1
+  geolocator: ^9.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+# Arquivos que devem ser seguidos no git
+tracked_files:
+  - lib/
+  - pubspec.yaml
+  - pubspec.lock
+  - test/
+  - .gitignore
+
+# Arquivos que devem ser ignorados
+ignored_files:
+  - .DS_Store
+  - build/
+  - coverage/
+  - .dart_tool/
+  - .flutter-plugins
+  - .flutter-plugins-dependencies
+  - .packages
+  - .pub-cache/
+  - flutter_export_environment.sh
+  - key.properties
+  - local.properties
+
+# Ambientes de Desenvolvimento
+environments:
+  development:
+    supabase_url: 'https://seu-projeto-dev.supabase.co'
+    supabase_key: 'sua-chave-dev'
+  
+  staging:
+    supabase_url: 'https://seu-projeto-staging.supabase.co'
+    supabase_key: 'sua-chave-staging'
+  
+  production:
+    supabase_url: 'https://seu-projeto-prod.supabase.co'
+    supabase_key: 'sua-chave-prod'
+
+# Build Targets
+build_targets:
+  android:
+    target_api: 33
+    min_api: 21
+    signing: true
+  
+  ios:
+    target_os: 14.0
+    signing: true
+
+# Feature Flags
+feature_flags:
+  maps_enabled: false
+  payment_enabled: false
+  realtime_notifications: false
+  dark_mode: true
+
+# Versioning
+version:
+  major: 1
+  minor: 0
+  patch: 0
+  build: 1
+  display: 1.0.0+1

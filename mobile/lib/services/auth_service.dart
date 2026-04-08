@@ -1,24 +1,30 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+﻿import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Serviço de autenticação com Supabase
+/// Servico de autenticacao com Supabase
 class AuthService {
   final _supabase = Supabase.instance.client;
 
-  /// Obter sessão atual
   Session? get currentSession => _supabase.auth.currentSession;
-
-  /// Verificar se usuário está autenticado
   bool get isAuthenticated => currentSession != null;
-
-  /// Obter ID do usuário atual
   String? get currentUserId => currentSession?.user.id;
 
-  /// Registrar novo usuário
-  /// 
-  /// [email] Email do usuário
-  /// [password] Senha (mínimo 6 caracteres)
-  /// [nome] Nome completo
-  /// [tipoUsuario] 'cliente' ou 'diarista'
+  /// Buscar tipo do usuario logado diretamente do banco
+  Future<String?> getCurrentUserType() async {
+    final userId = currentUserId;
+    if (userId == null) return null;
+    try {
+      final response = await _supabase
+          .from('users')
+          .select('tipo_usuario')
+          .eq('id', userId)
+          .single();
+      return response['tipo_usuario'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cadastrar novo usuario
   Future<AuthResponse> signup({
     required String email,
     required String password,
@@ -26,14 +32,12 @@ class AuthService {
     required String tipoUsuario,
   }) async {
     try {
-      // Criar autenticação no Supabase Auth
       final response = await _supabase.auth.signUp(
         email: email,
         password: password,
       );
 
       if (response.user != null) {
-        // Inserir dados do usuário na tabela 'users'
         await _supabase.from('users').insert({
           'id': response.user!.id,
           'email': email,
@@ -42,7 +46,6 @@ class AuthService {
           'criado_em': DateTime.now().toIso8601String(),
         });
 
-        // Se é diarista, criar perfil inicial
         if (tipoUsuario == 'diarista') {
           await _supabase.from('diaristas').insert({
             'user_id': response.user!.id,
@@ -55,7 +58,6 @@ class AuthService {
             'criado_em': DateTime.now().toIso8601String(),
           });
         } else if (tipoUsuario == 'cliente') {
-          // Inserir cliente
           await _supabase.from('clientes').insert({
             'user_id': response.user!.id,
             'criado_em': DateTime.now().toIso8601String(),
@@ -69,26 +71,23 @@ class AuthService {
     }
   }
 
-  /// Fazer login
-  /// 
-  /// [email] Email do usuário
-  /// [password] Senha
-  Future<AuthResponse> login({
+  /// Fazer login - retorna o tipo do usuario apos autenticar
+  Future<String> login({
     required String email,
     required String password,
   }) async {
     try {
-      final response = await _supabase.auth.signInWithPassword(
+      await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
-      return response;
+      final tipo = await getCurrentUserType();
+      return tipo ?? 'cliente';
     } on AuthException catch (e) {
       throw Exception('Erro no login: ${e.message}');
     }
   }
 
-  /// Fazer logout
   Future<void> logout() async {
     try {
       await _supabase.auth.signOut();
@@ -97,7 +96,6 @@ class AuthService {
     }
   }
 
-  /// Redefinir senha
   Future<void> resetPassword(String email) async {
     try {
       await _supabase.auth.resetPasswordForEmail(email);
@@ -106,9 +104,6 @@ class AuthService {
     }
   }
 
-  /// Obter usuário atual
   User? get user => _supabase.auth.currentUser;
-
-  /// Stream de autenticação - ouça mudanças de sessão
   Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
 }

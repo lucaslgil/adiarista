@@ -98,7 +98,7 @@ class UserService {
 
   /// Listar diaristas disponíveis filtradas por região
   Future<List<DiaristaPerfil>> getDiaristasDisponiveis({
-    required String regiao,
+    String regiao = '',
     double? precoMinimo,
     double? precoMaximo,
     double? avaliacaoMinima,
@@ -107,8 +107,11 @@ class UserService {
       var query = _supabase
           .from('diaristas')
           .select()
-          .eq('ativo', true)
-          .eq('regiao', regiao);
+          .eq('ativo', true);
+
+      if (regiao.isNotEmpty) {
+        query = query.eq('regiao', regiao);
+      }
 
       if (precoMinimo != null) {
         query = query.gte('preco', precoMinimo);
@@ -344,7 +347,64 @@ class UserService {
           .update({'avaliacao_media': media})
           .eq('user_id', diaristId);
     } catch (e) {
-      throw Exception('Erro ao atualizar média de avaliação: $e');
+      throw Exception('Erro ao atualizar media de avaliacao: $e');
+    }
+  }
+
+  // ============== ADMIN OPERATIONS ==============
+
+  /// Buscar todos os usuarios (apenas admin)
+  Future<List<Map<String, dynamic>>> getAllUsers() async {
+    try {
+      final response = await _supabase
+          .from('users')
+          .select('id, nome, email, tipo_usuario, criado_em')
+          .order('criado_em', ascending: false);
+      return List<Map<String, dynamic>>.from(response as List);
+    } catch (e) {
+      throw Exception('Erro ao buscar usuarios: $e');
+    }
+  }
+
+  /// Buscar todas as solicitacoes (apenas admin)
+  Future<List<Map<String, dynamic>>> getAllSolicitacoes() async {
+    try {
+      final response = await _supabase
+          .from('solicitacoes')
+          .select('id, descricao, endereco, status, data_agendada, criado_em')
+          .order('criado_em', ascending: false);
+      return List<Map<String, dynamic>>.from(response as List);
+    } catch (e) {
+      throw Exception('Erro ao buscar solicitacoes: $e');
+    }
+  }
+
+  /// Estatisticas gerais para o painel admin
+  Future<Map<String, int>> getAdminStats() async {
+    try {
+      final users = await _supabase.from('users').select('tipo_usuario');
+      final solicitacoes = await _supabase.from('solicitacoes').select('id');
+
+      final userList = users as List;
+      final total = userList.length;
+      final clientes =
+          userList.where((u) => u['tipo_usuario'] == 'cliente').length;
+      final diaristas =
+          userList.where((u) => u['tipo_usuario'] == 'diarista').length;
+
+      return {
+        'total_usuarios': total,
+        'total_clientes': clientes,
+        'total_diaristas': diaristas,
+        'total_solicitacoes': (solicitacoes as List).length,
+      };
+    } catch (_) {
+      return {
+        'total_usuarios': 0,
+        'total_clientes': 0,
+        'total_diaristas': 0,
+        'total_solicitacoes': 0,
+      };
     }
   }
 }

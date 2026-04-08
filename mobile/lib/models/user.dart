@@ -3,7 +3,7 @@ class User {
   final String id;
   final String nome;
   final String email;
-  final String tipoUsuario; // 'cliente' ou 'diarista'
+  final String tipoUsuario; // 'cliente', 'diarista' ou 'admin'
   final String? fotoPerfil;
   final DateTime criadoEm;
 
@@ -15,6 +15,10 @@ class User {
     this.fotoPerfil,
     required this.criadoEm,
   });
+
+  bool get isAdmin => tipoUsuario == 'admin';
+  bool get isCliente => tipoUsuario == 'cliente';
+  bool get isDiarista => tipoUsuario == 'diarista';
 
   /// Criar User a partir de JSON (vindo do Supabase)
   factory User.fromJson(Map<String, dynamic> json) {

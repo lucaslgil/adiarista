@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/widget_previews.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart' as provider;
 import '../../config/theme.dart';
@@ -76,13 +77,20 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final authService = context.read<AuthService>();
 
-      await authService.login(
+      final tipoUsuario = await authService.login(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       if (mounted) {
-        context.go('/client-home');
+        switch (tipoUsuario) {
+          case 'admin':
+            context.go('/admin-home');
+          case 'diarista':
+            context.go('/worker-home');
+          default:
+            context.go('/client-home');
+        }
       }
     } catch (e) {
       setState(() {
@@ -355,3 +363,25 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 }
+
+// ─── Widget Previews ────────────────────────────────────────────────────────
+
+@Preview(name: 'Login Screen', brightness: Brightness.light)
+Widget loginScreenPreview() => provider.Provider<AuthService>(
+      create: (_) => AuthService(),
+      child: MaterialApp(
+        theme: AppTheme.lightTheme,
+        debugShowCheckedModeBanner: false,
+        home: const LoginScreen(),
+      ),
+    );
+
+@Preview(name: 'Login Screen - Dark', brightness: Brightness.dark)
+Widget loginScreenDarkPreview() => provider.Provider<AuthService>(
+      create: (_) => AuthService(),
+      child: MaterialApp(
+        theme: AppTheme.darkTheme,
+        debugShowCheckedModeBanner: false,
+        home: const LoginScreen(),
+      ),
+    );

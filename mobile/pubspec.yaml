@@ -27,7 +27,7 @@ dependencies:
   shared_preferences: ^2.2.0
 
   # UI Components
-  google_fonts: ^6.1.0
+  google_fonts: ^8.0.0
   
   # Date & Time
   intl: ^0.19.0
@@ -36,12 +36,12 @@ dependencies:
   email_validator: ^2.1.0
 
   # Image Picker (for profile photos)
-  image_picker: ^1.0.4
+  # image_picker: ^1.0.4
 
   # Maps (optional for location selection)
-  google_maps_flutter: ^2.5.0
-  geocoding: ^2.1.1
-  geolocator: ^9.0.2
+  # google_maps_flutter: ^2.5.0
+  # geocoding: ^2.1.1
+  # geolocator: ^9.0.2
 
 dev_dependencies:
   flutter_test:

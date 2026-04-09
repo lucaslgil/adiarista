@@ -213,7 +213,8 @@ class _BuscarDiaristasScreenState extends State<BuscarDiaristasScreen> {
                             SizedBox(height: 12),
                             Text('Nenhuma diarista encontrada',
                                 style: TextStyle(
-                                    color: AppTheme.colorSubtext, fontSize: 16)),
+                                    color: AppTheme.colorSubtext,
+                                    fontSize: 16)),
                           ],
                         ),
                       )
@@ -221,7 +222,8 @@ class _BuscarDiaristasScreenState extends State<BuscarDiaristasScreen> {
                         onRefresh: _carregarDiaristas,
                         child: ListView.separated(
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
                           itemCount: _filtradas.length,
                           itemBuilder: (context, i) =>
                               _DiaristaCard(diarista: _filtradas[i]),
@@ -245,8 +247,11 @@ class _DiaristaCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => context.push(
-        '/nova-solicitacao',
-        extra: {'diaristId': diarista.userId},
+        '/agenda-cliente',
+        extra: {
+          'diaristaId': diarista.userId,
+          'diaristaNome': diarista.regiao,
+        },
       ),
       child: Container(
         padding: const EdgeInsets.all(16),

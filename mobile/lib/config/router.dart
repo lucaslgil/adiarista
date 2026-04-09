@@ -6,6 +6,7 @@ import '../screens/auth/auth_callback_screen.dart';
 import '../screens/client/home_client_screen.dart';
 import '../screens/client/buscar_diaristas_screen.dart';
 import '../screens/client/nova_solicitacao_screen.dart';
+import '../screens/client/agenda_cliente_screen.dart';
 import '../screens/worker/home_worker_screen.dart';
 import '../screens/admin/admin_home_screen.dart';
 
@@ -67,6 +68,16 @@ class AppRouter {
           return NovaSolicitacaoScreen(
             tipoInicial: extra?['tipo'] as String?,
             diaristIdInicial: extra?['diaristId'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/agenda-cliente',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return AgendaClienteScreen(
+            diaristaId: extra['diaristaId'] as String,
+            diaristaNome: extra['diaristaNome'] as String? ?? 'Diarista',
           );
         },
       ),

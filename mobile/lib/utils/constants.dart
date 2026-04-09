@@ -57,27 +57,24 @@ class AppConstants {
   static const String statusFinalizada = 'finalizada';
   static const String statusCancelada = 'cancelada';
 
-  // Tipos de limpeza
-  static const List<String> tiposLimpeza = [
-    'Limpeza Geral',
-    'Limpeza Profunda',
-    'Organização',
-    'Enceramento de Piso',
-    'Limpeza de Cozinha',
-    'Limpeza de Banheiro',
-    'Limpeza Pós-Obra',
-    'Limpeza Comercial',
+  // Tipos de serviço — definidos centralmente em models/servico.dart (ServicoRegistry)
+  // Use ServicoRegistry.all para listar os serviços do MVP.
+
+  // Especialidades válidas para perfil de diarista (alinhadas com os serviços do MVP)
+  static const List<String> especialidades = [
+    'limpeza_residencial',
+    'limpeza_comercial',
+    'lavar_roupas',
+    'passar_roupas',
   ];
 
-  // Especialidades
-  static const List<String> especialidades = [
-    'Limpeza Residencial',
-    'Limpeza Comercial',
-    'Organização',
-    'Enceramento',
-    'Dedetização',
-    'Higienização',
-  ];
+  // Labels legíveis das especialidades (para exibição na UI)
+  static const Map<String, String> especialidadeLabels = {
+    'limpeza_residencial': 'Limpeza Residencial',
+    'limpeza_comercial': 'Limpeza Comercial',
+    'lavar_roupas': 'Lavar Roupas',
+    'passar_roupas': 'Passar Roupas',
+  };
 
   // Regiões exemplo
   static const List<String> regioes = [

@@ -8,8 +8,9 @@ class Solicitacao {
   final String endereco;
   final String descricao;
   final String? observacoes;
-  final String? tipoLimpeza; // Ex: 'apartamento', 'casa', 'comercial'
+  final String? tipoLimpeza; // Valores MVP: 'limpeza_residencial' | 'limpeza_comercial' | 'lavar_roupas' | 'passar_roupas'
   final double? precoEstimado;
+  final Map<String, dynamic>? parametros; // Parâmetros específicos do serviço
   final DateTime criadoEm;
   final DateTime? concluidaEm;
 
@@ -24,6 +25,7 @@ class Solicitacao {
     this.observacoes,
     this.tipoLimpeza,
     this.precoEstimado,
+    this.parametros,
     required this.criadoEm,
     this.concluidaEm,
   });
@@ -40,6 +42,9 @@ class Solicitacao {
       observacoes: json['observacoes'] as String?,
       tipoLimpeza: json['tipo_limpeza'] as String?,
       precoEstimado: (json['preco_estimado'] as num?)?.toDouble(),
+      parametros: json['parametros'] != null
+          ? Map<String, dynamic>.from(json['parametros'] as Map)
+          : null,
       criadoEm: DateTime.parse(json['criado_em'] as String),
       concluidaEm: json['concluida_em'] != null
           ? DateTime.parse(json['concluida_em'] as String)
@@ -59,6 +64,7 @@ class Solicitacao {
       'observacoes': observacoes,
       'tipo_limpeza': tipoLimpeza,
       'preco_estimado': precoEstimado,
+      'parametros': parametros,
       'criado_em': criadoEm.toIso8601String(),
       'concluida_em': concluidaEm?.toIso8601String(),
     };
@@ -75,6 +81,7 @@ class Solicitacao {
     String? observacoes,
     String? tipoLimpeza,
     double? precoEstimado,
+    Map<String, dynamic>? parametros,
     DateTime? criadoEm,
     DateTime? concluidaEm,
   }) {
@@ -89,6 +96,7 @@ class Solicitacao {
       observacoes: observacoes ?? this.observacoes,
       tipoLimpeza: tipoLimpeza ?? this.tipoLimpeza,
       precoEstimado: precoEstimado ?? this.precoEstimado,
+      parametros: parametros ?? this.parametros,
       criadoEm: criadoEm ?? this.criadoEm,
       concluidaEm: concluidaEm ?? this.concluidaEm,
     );

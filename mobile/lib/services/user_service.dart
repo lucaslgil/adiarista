@@ -143,6 +143,7 @@ class UserService {
     required String descricao,
     String? observacoes,
     String? tipoLimpeza,
+    Map<String, dynamic>? parametros,
     double? precoEstimado,
   }) async {
     try {
@@ -154,6 +155,7 @@ class UserService {
         'descricao': descricao,
         'observacoes': observacoes,
         'tipo_limpeza': tipoLimpeza,
+        'parametros': parametros,
         'preco_estimado': precoEstimado,
         'criado_em': DateTime.now().toIso8601String(),
       }).select('id');

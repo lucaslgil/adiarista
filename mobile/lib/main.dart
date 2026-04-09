@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widget_previews.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -46,7 +45,4 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ─── Widget Previews ────────────────────────────────────────────────────────
 
-@Preview(name: 'App - Tela inicial')
-Widget appPreview() => const MyApp();

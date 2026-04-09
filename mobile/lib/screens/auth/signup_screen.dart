@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/widget_previews.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
@@ -457,14 +456,4 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 }
 
-// ─── Widget Previews ────────────────────────────────────────────────────────
 
-@Preview(name: 'Signup Screen')
-Widget signupScreenPreview() => Provider<AuthService>(
-      create: (_) => AuthService(),
-      child: MaterialApp(
-        theme: AppTheme.lightTheme,
-        debugShowCheckedModeBanner: false,
-        home: const SignupScreen(),
-      ),
-    );

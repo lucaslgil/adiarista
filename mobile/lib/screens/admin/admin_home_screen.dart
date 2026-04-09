@@ -1,5 +1,4 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter/widget_previews.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
@@ -488,17 +487,3 @@ class _SolicitacoesTabState extends State<_SolicitacoesTab> {
   }
 }
 
-// ─── Widget Previews ─────────────────────────────────────────────────────────
-
-@Preview(name: 'Admin Home')
-Widget adminHomePreview() => MultiProvider(
-      providers: [
-        Provider(create: (_) => AuthService()),
-        Provider(create: (_) => UserService()),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.lightTheme,
-        debugShowCheckedModeBanner: false,
-        home: const AdminHomeScreen(),
-      ),
-    );

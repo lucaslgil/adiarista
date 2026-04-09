@@ -1,12 +1,12 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter/widget_previews.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../models/servico.dart';
+import '../../models/solicitacao.dart';
 import '../../services/auth_service.dart';
 import '../../services/user_service.dart';
-import '../../models/solicitacao.dart';
 
 class HomeClientScreen extends StatefulWidget {
   const HomeClientScreen({Key? key}) : super(key: key);
@@ -392,7 +392,7 @@ class _SolicitacaoCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  solicitacao.tipoLimpeza ?? 'Servico de limpeza',
+                  ServicoRegistry.labelFor(solicitacao.tipoLimpeza),
                   style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                 ),
                 const SizedBox(height: 2),
@@ -541,7 +541,7 @@ class _HistoricoTab extends StatelessWidget {
                     child: const Icon(Icons.cleaning_services_outlined,
                         color: AppTheme.colorSubtext),
                   ),
-                  title: Text(s.tipoLimpeza ?? 'Servico de limpeza',
+                  title: Text(ServicoRegistry.labelFor(s.tipoLimpeza),
                       style: const TextStyle(fontWeight: FontWeight.w600)),
                   subtitle: Text(fmt.format(s.dataAgendada),
                       style: const TextStyle(
@@ -673,17 +673,3 @@ class _MenuTile extends StatelessWidget {
   }
 }
 
-// ─── Widget Previews ─────────────────────────────────────────────────────────
-
-@Preview(name: 'Home Cliente')
-Widget homeClientPreview() => MultiProvider(
-      providers: [
-        Provider(create: (_) => AuthService()),
-        Provider(create: (_) => UserService()),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.lightTheme,
-        debugShowCheckedModeBanner: false,
-        home: const HomeClientScreen(),
-      ),
-    );

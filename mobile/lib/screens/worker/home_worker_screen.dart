@@ -1,10 +1,10 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter/widget_previews.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/diarista_perfil.dart';
+import '../../models/servico.dart';
 import '../../models/solicitacao.dart';
 import '../../services/auth_service.dart';
 import '../../services/user_service.dart';
@@ -426,7 +426,7 @@ class _PedidoCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        solicitacao.tipoLimpeza ?? 'Limpeza',
+                        ServicoRegistry.labelFor(solicitacao.tipoLimpeza),
                         style: const TextStyle(
                             fontSize: 12, fontWeight: FontWeight.w600),
                       ),
@@ -645,7 +645,7 @@ class _TrabalhoTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  solicitacao.tipoLimpeza ?? 'Servico de limpeza',
+                  ServicoRegistry.labelFor(solicitacao.tipoLimpeza),
                   style: const TextStyle(
                       fontWeight: FontWeight.w600, fontSize: 15),
                 ),
@@ -878,17 +878,3 @@ class _MenuTile extends StatelessWidget {
   }
 }
 
-// ─── Widget Previews ──────────────────────────────────────────────────────────
-
-@Preview(name: 'Home Worker - Disponivel')
-Widget homeWorkerPreview() => MultiProvider(
-      providers: [
-        Provider(create: (_) => AuthService()),
-        Provider(create: (_) => UserService()),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.lightTheme,
-        debugShowCheckedModeBanner: false,
-        home: const HomeWorkerScreen(),
-      ),
-    );

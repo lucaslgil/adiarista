@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +9,7 @@ import '../../models/servico.dart';
 import '../../models/solicitacao.dart';
 import '../../services/auth_service.dart';
 import '../../services/user_service.dart';
+import 'agenda_worker_screen.dart';
 
 class HomeWorkerScreen extends StatefulWidget {
   const HomeWorkerScreen({Key? key}) : super(key: key);
@@ -87,7 +89,8 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
     if (userId == null) return;
 
     try {
-      await userService.aceitarSolicitacao(solicitacaoId: s.id, diaristId: userId);
+      await userService.aceitarSolicitacao(
+          solicitacaoId: s.id, diaristId: userId);
       await _loadData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -114,6 +117,31 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
     if (mounted) context.go('/login');
   }
 
+  Future<void> _abrirEdicaoPerfil() async {
+    if (_perfil == null) return;
+    final userId = context.read<AuthService>().currentUserId;
+    if (userId == null) return;
+    final userService = context.read<UserService>();
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditarPerfilSheet(
+        perfil: _perfil!,
+        onSalvar: (descricao, preco, precoMeio, regiao, especialidades) async {
+          await userService.updateDiaristaPerfil(
+            userId: userId,
+            descricao: descricao,
+            preco: preco,
+            regiao: regiao,
+            especialidades: especialidades,
+          );
+          await _loadData();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -131,10 +159,12 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
             onRefresh: _loadData,
           ),
           _MeusPedidosTab(pedidos: _meusPedidos),
+          const AgendaWorkerScreen(),
           _PerfilWorkerTab(
             nome: _nomeDiarista,
             perfil: _perfil,
             onLogout: _handleLogout,
+            onEditarPerfil: _abrirEdicaoPerfil,
           ),
         ],
       ),
@@ -150,7 +180,12 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
           NavigationDestination(
             icon: Icon(Icons.work_outline),
             selectedIcon: Icon(Icons.work),
-            label: 'Meus Trabalhos',
+            label: 'Trabalhos',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month),
+            label: 'Agenda',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
@@ -211,14 +246,20 @@ class _HomeTab extends StatelessWidget {
                           Text(
                             'Ola, $nomeDiarista',
                             style: TextStyle(
-                              color: disponivel ? Colors.white70 : AppTheme.colorSubtext,
+                              color: disponivel
+                                  ? Colors.white70
+                                  : AppTheme.colorSubtext,
                               fontSize: 15,
                             ),
                           ),
                           Text(
-                            disponivel ? 'Voce esta disponivel' : 'Voce esta offline',
+                            disponivel
+                                ? 'Voce esta disponivel'
+                                : 'Voce esta offline',
                             style: TextStyle(
-                              color: disponivel ? Colors.white : AppTheme.colorText,
+                              color: disponivel
+                                  ? Colors.white
+                                  : AppTheme.colorText,
                               fontSize: 22,
                               fontWeight: FontWeight.w700,
                               letterSpacing: -0.5,
@@ -306,15 +347,15 @@ class _HomeTab extends StatelessWidget {
                     const SizedBox(height: 16),
                     const Text(
                       'Voce esta offline',
-                      style: TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w600),
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 8),
                     const Text(
                       'Ative sua disponibilidade para receber pedidos',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: AppTheme.colorSubtext, fontSize: 14),
+                      style:
+                          TextStyle(color: AppTheme.colorSubtext, fontSize: 14),
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton(
@@ -340,15 +381,15 @@ class _HomeTab extends StatelessWidget {
                     SizedBox(height: 16),
                     Text(
                       'Nenhum pedido por enquanto',
-                      style: TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w600),
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                     ),
                     SizedBox(height: 8),
                     Text(
                       'Novos pedidos apareceram aqui quando disponivel',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: AppTheme.colorSubtext, fontSize: 14),
+                      style:
+                          TextStyle(color: AppTheme.colorSubtext, fontSize: 14),
                     ),
                   ],
                 ),
@@ -496,8 +537,7 @@ class _PedidoCard extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 48),
                       foregroundColor: AppTheme.errorColor,
-                      side:
-                          const BorderSide(color: AppTheme.errorColor),
+                      side: const BorderSide(color: AppTheme.errorColor),
                     ),
                     child: const Text('Recusar'),
                   ),
@@ -534,8 +574,7 @@ class _MeusPedidosTab extends StatelessWidget {
     final ativos = pedidos
         .where((s) => s.status == 'aceita' || s.status == 'em_andamento')
         .toList();
-    final concluidos =
-        pedidos.where((s) => s.status == 'finalizada').toList();
+    final concluidos = pedidos.where((s) => s.status == 'finalizada').toList();
     final fmt = DateFormat("dd/MM 'as' HH:mm");
 
     return CustomScrollView(
@@ -601,7 +640,6 @@ class _MeusPedidosTab extends StatelessWidget {
             ),
           ],
         ],
-
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
     );
@@ -682,11 +720,13 @@ class _PerfilWorkerTab extends StatelessWidget {
   final String nome;
   final DiaristaPerfil? perfil;
   final VoidCallback onLogout;
+  final VoidCallback onEditarPerfil;
 
   const _PerfilWorkerTab({
     required this.nome,
     required this.perfil,
     required this.onLogout,
+    required this.onEditarPerfil,
   });
 
   @override
@@ -739,8 +779,8 @@ class _PerfilWorkerTab extends StatelessWidget {
                         fontSize: 20, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 const Text('Diarista',
-                    style: TextStyle(
-                        color: AppTheme.colorSubtext, fontSize: 14)),
+                    style:
+                        TextStyle(color: AppTheme.colorSubtext, fontSize: 14)),
 
                 if (perfil != null) ...[
                   const SizedBox(height: 16),
@@ -776,7 +816,7 @@ class _PerfilWorkerTab extends StatelessWidget {
                 _MenuTile(
                   icon: Icons.person_outline,
                   label: 'Editar perfil profissional',
-                  onTap: () {},
+                  onTap: onEditarPerfil,
                 ),
                 _MenuTile(
                   icon: Icons.star_border_outlined,
@@ -834,8 +874,8 @@ class _EstatCard extends StatelessWidget {
               style:
                   const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           Text(label,
-              style: const TextStyle(
-                  color: AppTheme.colorSubtext, fontSize: 11)),
+              style:
+                  const TextStyle(color: AppTheme.colorSubtext, fontSize: 11)),
         ],
       ),
     );
@@ -864,12 +904,10 @@ class _MenuTile extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: Icon(icon, color: color),
           title: Text(label,
-              style: TextStyle(
-                  color: color, fontWeight: FontWeight.w500)),
+              style: TextStyle(color: color, fontWeight: FontWeight.w500)),
           trailing: isDestructive
               ? null
-              : const Icon(Icons.chevron_right,
-                  color: AppTheme.colorSubtext),
+              : const Icon(Icons.chevron_right, color: AppTheme.colorSubtext),
           onTap: onTap,
         ),
         const Divider(height: 1),
@@ -878,3 +916,356 @@ class _MenuTile extends StatelessWidget {
   }
 }
 
+// ─── Bottom Sheet: Editar Perfil / Valores ────────────────────────────────────
+
+typedef _OnSalvarPerfil = Future<void> Function(
+  String descricao,
+  double preco,
+  double precoMeio,
+  String regiao,
+  List<String> especialidades,
+);
+
+class _EditarPerfilSheet extends StatefulWidget {
+  final DiaristaPerfil perfil;
+  final _OnSalvarPerfil onSalvar;
+
+  const _EditarPerfilSheet({
+    required this.perfil,
+    required this.onSalvar,
+  });
+
+  @override
+  State<_EditarPerfilSheet> createState() => _EditarPerfilSheetState();
+}
+
+class _EditarPerfilSheetState extends State<_EditarPerfilSheet> {
+  late final TextEditingController _descricaoCtrl;
+  late final TextEditingController _precoCtrl;
+  late final TextEditingController _precoMeioCtrl;
+  late final TextEditingController _regiaoCtrl;
+  late final TextEditingController _especialidadeCtrl;
+  late List<String> _especialidades;
+  bool _salvando = false;
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _descricaoCtrl = TextEditingController(text: widget.perfil.descricao);
+    _precoCtrl =
+        TextEditingController(text: widget.perfil.preco.toStringAsFixed(0));
+    _precoMeioCtrl = TextEditingController(
+        text: (widget.perfil.preco * 0.6).toStringAsFixed(0));
+    _regiaoCtrl = TextEditingController(text: widget.perfil.regiao);
+    _especialidadeCtrl = TextEditingController();
+    _especialidades = List<String>.from(widget.perfil.especialidades);
+  }
+
+  @override
+  void dispose() {
+    _descricaoCtrl.dispose();
+    _precoCtrl.dispose();
+    _precoMeioCtrl.dispose();
+    _regiaoCtrl.dispose();
+    _especialidadeCtrl.dispose();
+    super.dispose();
+  }
+
+  void _adicionarEspecialidade() {
+    final texto = _especialidadeCtrl.text.trim();
+    if (texto.isEmpty || _especialidades.contains(texto)) return;
+    setState(() {
+      _especialidades.add(texto);
+      _especialidadeCtrl.clear();
+    });
+  }
+
+  Future<void> _salvar() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _salvando = true);
+    try {
+      await widget.onSalvar(
+        _descricaoCtrl.text.trim(),
+        double.parse(_precoCtrl.text.replaceAll(',', '.')),
+        double.parse(_precoMeioCtrl.text.replaceAll(',', '.')),
+        _regiaoCtrl.text.trim(),
+        _especialidades,
+      );
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Perfil atualizado com sucesso!'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao salvar: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.colorBackground,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(20, 20, 20, bottom + 24),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.colorBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              const Text(
+                'Editar Perfil Profissional',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Descrição ──────────────────────────────────────────
+              const _FieldLabel(text: 'Descrição profissional'),
+              const SizedBox(height: 6),
+              TextFormField(
+                controller: _descricaoCtrl,
+                maxLines: 3,
+                decoration: _inputDecoration(
+                    'Ex: Profissional com 5 anos de experiência...'),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Campo obrigatório'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+
+              // ── Preços ────────────────────────────────────────────
+              const _FieldLabel(text: 'Valores cobrados'),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Diária integral (8h)',
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.colorSubtext),
+                        ),
+                        const SizedBox(height: 4),
+                        TextFormField(
+                          controller: _precoCtrl,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9,.]'))
+                          ],
+                          decoration: _inputDecoration('R\$ 0,00').copyWith(
+                            prefixText: 'R\$ ',
+                          ),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty)
+                              return 'Obrigatório';
+                            final n = double.tryParse(v.replaceAll(',', '.'));
+                            if (n == null || n <= 0) return 'Valor inválido';
+                            return null;
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Meio período (4h)',
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.colorSubtext),
+                        ),
+                        const SizedBox(height: 4),
+                        TextFormField(
+                          controller: _precoMeioCtrl,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9,.]'))
+                          ],
+                          decoration: _inputDecoration('R\$ 0,00').copyWith(
+                            prefixText: 'R\$ ',
+                          ),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty)
+                              return 'Obrigatório';
+                            final n = double.tryParse(v.replaceAll(',', '.'));
+                            if (n == null || n <= 0) return 'Valor inválido';
+                            return null;
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // ── Região ────────────────────────────────────────────
+              const _FieldLabel(text: 'Região de atuação'),
+              const SizedBox(height: 6),
+              TextFormField(
+                controller: _regiaoCtrl,
+                decoration: _inputDecoration('Ex: Centro, Zona Sul...'),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Campo obrigatório'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+
+              // ── Especialidades ────────────────────────────────────
+              const _FieldLabel(text: 'Especialidades'),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _especialidadeCtrl,
+                      decoration: _inputDecoration(
+                          'Ex: limpeza profunda, organização...'),
+                      onFieldSubmitted: (_) => _adicionarEspecialidade(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _adicionarEspecialidade,
+                    icon: const Icon(Icons.add),
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              if (_especialidades.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _especialidades.map((e) {
+                    return Chip(
+                      label: Text(e, style: const TextStyle(fontSize: 12)),
+                      deleteIcon: const Icon(Icons.close, size: 14),
+                      onDeleted: () =>
+                          setState(() => _especialidades.remove(e)),
+                      backgroundColor: AppTheme.accentBlue.withAlpha(15),
+                      side:
+                          BorderSide(color: AppTheme.accentBlue.withAlpha(40)),
+                      labelStyle: const TextStyle(color: AppTheme.accentBlue),
+                      deleteIconColor: AppTheme.accentBlue,
+                    );
+                  }).toList(),
+                ),
+              ],
+              const SizedBox(height: 24),
+
+              // ── Botão Salvar ──────────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _salvando ? null : _salvar,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _salvando
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Salvar alterações',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: AppTheme.colorSubtext, fontSize: 14),
+      filled: true,
+      fillColor: AppTheme.colorSurface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppTheme.colorBorder),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppTheme.colorBorder),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppTheme.accentBlue, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppTheme.errorColor, width: 1.5),
+      ),
+    );
+  }
+}
+
+class _FieldLabel extends StatelessWidget {
+  final String text;
+  const _FieldLabel({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: AppTheme.colorSubtext,
+      ),
+    );
+  }
+}

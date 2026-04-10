@@ -44,7 +44,6 @@ class AppTheme {
       primary: primaryColor,
       secondary: accentBlue,
       error: errorColor,
-      background: colorBackground,
       surface: colorSurface,
     ),
     textTheme: GoogleFonts.interTextTheme(
@@ -208,11 +207,10 @@ class AppTheme {
     brightness: Brightness.dark,
     primaryColor: primaryLight,
     scaffoldBackgroundColor: darkBackground,
-    colorScheme: ColorScheme.dark(
+    colorScheme: const ColorScheme.dark(
       primary: primaryLight,
       secondary: secondaryColor,
       error: errorColor,
-      background: darkBackground,
       surface: darkSurface,
     ),
     textTheme: GoogleFonts.poppinsTextTheme(

@@ -7,7 +7,9 @@ import '../../config/theme.dart';
 import '../../models/diarista_perfil.dart';
 import '../../models/servico.dart';
 import '../../models/solicitacao.dart';
+import '../../models/preco_diarista.dart';
 import '../../services/auth_service.dart';
+import '../../services/precos_service.dart';
 import '../../services/user_service.dart';
 import 'agenda_worker_screen.dart';
 
@@ -22,6 +24,7 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
   int _selectedIndex = 0;
   bool _disponivel = true;
   bool _isLoading = false;
+  bool _precoConfigurado = false;
   List<Solicitacao> _pedidosPendentes = [];
   List<Solicitacao> _meusPedidos = [];
   DiaristaPerfil? _perfil;
@@ -40,11 +43,13 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
       final userService = context.read<UserService>();
       final userId = authService.currentUserId;
       if (userId != null) {
+        final precosService = context.read<PrecosService>();
         final results = await Future.wait([
           userService.getSolicitacoesPendentes(''),
           userService.getSolicitacoesDiarista(userId),
           userService.getDiaristaPerfil(userId),
           userService.getUserById(userId),
+          precosService.diaristaPodeAtender(userId),
         ]);
 
         if (mounted) {
@@ -59,6 +64,7 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
               _nomeDiarista = (user as dynamic).nome.split(' ').first;
             }
             if (_perfil != null) _disponivel = _perfil!.ativo;
+            _precoConfigurado = results[4] as bool;
           });
         }
       }
@@ -68,11 +74,47 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
     }
   }
 
+  Future<void> _abrirConfigurarPrecos() async {
+    await context.push('/configurar-precos');
+    if (mounted) await _loadData();
+  }
+
   Future<void> _toggleDisponibilidade(bool valor) async {
     final authService = context.read<AuthService>();
     final userService = context.read<UserService>();
     final userId = authService.currentUserId;
     if (userId == null) return;
+
+    // Bloquear ativação sem preços configurados
+    if (valor && !_precoConfigurado) {
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Configure seus preços'),
+          content: const Text(
+            'Você precisa configurar ao menos um serviço com preço válido '
+            'antes de ficar disponível para receber pedidos.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Agora não'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _abrirConfigurarPrecos();
+              },
+              child: const Text('Configurar Preços'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
 
     setState(() => _disponivel = valor);
     try {
@@ -152,19 +194,23 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
           _HomeTab(
             nomeDiarista: _nomeDiarista,
             disponivel: _disponivel,
+            precoConfigurado: _precoConfigurado,
             isLoading: _isLoading,
             pedidosPendentes: _pedidosPendentes,
             onToggleDisponibilidade: _toggleDisponibilidade,
             onAceitar: _aceitarPedido,
             onRefresh: _loadData,
+            onConfigurarPrecos: _abrirConfigurarPrecos,
           ),
           _MeusPedidosTab(pedidos: _meusPedidos),
           const AgendaWorkerScreen(),
           _PerfilWorkerTab(
             nome: _nomeDiarista,
             perfil: _perfil,
+            precoConfigurado: _precoConfigurado,
             onLogout: _handleLogout,
             onEditarPerfil: _abrirEdicaoPerfil,
+            onConfigurarPrecos: _abrirConfigurarPrecos,
           ),
         ],
       ),
@@ -203,20 +249,24 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
 class _HomeTab extends StatelessWidget {
   final String nomeDiarista;
   final bool disponivel;
+  final bool precoConfigurado;
   final bool isLoading;
   final List<Solicitacao> pedidosPendentes;
   final void Function(bool) onToggleDisponibilidade;
   final void Function(Solicitacao) onAceitar;
   final VoidCallback onRefresh;
+  final VoidCallback onConfigurarPrecos;
 
   const _HomeTab({
     required this.nomeDiarista,
     required this.disponivel,
+    required this.precoConfigurado,
     required this.isLoading,
     required this.pedidosPendentes,
     required this.onToggleDisponibilidade,
     required this.onAceitar,
     required this.onRefresh,
+    required this.onConfigurarPrecos,
   });
 
   @override
@@ -225,6 +275,36 @@ class _HomeTab extends StatelessWidget {
       onRefresh: () async => onRefresh(),
       child: CustomScrollView(
         slivers: [
+          // Banner de alerta quando preços não configurados
+          if (!precoConfigurado)
+            SliverToBoxAdapter(
+              child: GestureDetector(
+                onTap: onConfigurarPrecos,
+                child: Container(
+                  color: AppTheme.warningColor.withAlpha(25),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_outlined,
+                          color: AppTheme.warningColor, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Configure seus preços para começar a receber pedidos',
+                          style: TextStyle(
+                              color: AppTheme.warningColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right,
+                          color: AppTheme.warningColor, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           // Header
           SliverToBoxAdapter(
             child: Container(
@@ -719,14 +799,18 @@ class _TrabalhoTile extends StatelessWidget {
 class _PerfilWorkerTab extends StatelessWidget {
   final String nome;
   final DiaristaPerfil? perfil;
+  final bool precoConfigurado;
   final VoidCallback onLogout;
   final VoidCallback onEditarPerfil;
+  final VoidCallback onConfigurarPrecos;
 
   const _PerfilWorkerTab({
     required this.nome,
     required this.perfil,
+    required this.precoConfigurado,
     required this.onLogout,
     required this.onEditarPerfil,
+    required this.onConfigurarPrecos,
   });
 
   @override
@@ -819,6 +903,12 @@ class _PerfilWorkerTab extends StatelessWidget {
                   onTap: onEditarPerfil,
                 ),
                 _MenuTile(
+                  icon: Icons.payments_outlined,
+                  label: 'Configurar Preços',
+                  badge: !precoConfigurado ? 'Pendente' : null,
+                  onTap: onConfigurarPrecos,
+                ),
+                _MenuTile(
                   icon: Icons.star_border_outlined,
                   label: 'Minhas avaliacoes',
                   onTap: () {},
@@ -887,12 +977,14 @@ class _MenuTile extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool isDestructive;
+  final String? badge;
 
   const _MenuTile({
     required this.icon,
     required this.label,
     required this.onTap,
     this.isDestructive = false,
+    this.badge,
   });
 
   @override
@@ -903,8 +995,32 @@ class _MenuTile extends StatelessWidget {
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(icon, color: color),
-          title: Text(label,
-              style: TextStyle(color: color, fontWeight: FontWeight.w500)),
+          title: Row(
+            children: [
+              Text(label,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w500)),
+              if (badge != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.warningColor.withAlpha(25),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: AppTheme.warningColor.withAlpha(80)),
+                  ),
+                  child: Text(
+                    badge!,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.warningColor,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ],
+          ),
           trailing: isDestructive
               ? null
               : const Icon(Icons.chevron_right, color: AppTheme.colorSubtext),

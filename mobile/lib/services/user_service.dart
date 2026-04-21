@@ -96,7 +96,7 @@ class UserService {
     }
   }
 
-  /// Listar diaristas disponíveis filtradas por região
+  /// Listar diaristas disponíveis filtradas por região e com preços configurados
   Future<List<DiaristaPerfil>> getDiaristasDisponiveis({
     String regiao = '',
     double? precoMinimo,
@@ -124,10 +124,29 @@ class UserService {
       }
 
       final response = await query;
-
-      return (response as List)
+      final diaristas = (response as List)
           .map((e) => DiaristaPerfil.fromJson(e as Map<String, dynamic>))
           .toList();
+
+      // Filtrar somente diaristas com ao menos 1 preço configurado
+      try {
+        final precosResp = await _supabase
+            .from('precos_diarista')
+            .select('usuario_id')
+            .gt('valor_minimo', 0);
+
+        final idsComPrecos = <String>{
+          for (final row in precosResp as List)
+            row['usuario_id'] as String,
+        };
+
+        return diaristas
+            .where((d) => idsComPrecos.contains(d.userId))
+            .toList();
+      } catch (_) {
+        // Tabela ainda não criada; retorna sem filtro de preços
+        return diaristas;
+      }
     } catch (e) {
       throw Exception('Erro ao buscar diaristas: $e');
     }
@@ -145,6 +164,7 @@ class UserService {
     String? tipoLimpeza,
     Map<String, dynamic>? parametros,
     double? precoEstimado,
+    int? duracaoMinutos,
   }) async {
     try {
       final response = await _supabase.from('solicitacoes').insert({
@@ -157,6 +177,7 @@ class UserService {
         'tipo_limpeza': tipoLimpeza,
         'parametros': parametros,
         'preco_estimado': precoEstimado,
+        'duracao_minutos': duracaoMinutos,
         'criado_em': DateTime.now().toIso8601String(),
       }).select('id');
 

@@ -90,19 +90,25 @@ class DiaristaDisponibilidade {
 
   // Conversor JSON
   factory DiaristaDisponibilidade.fromJson(Map<String, dynamic> json) {
-    return DiaristaDisponibilidade(
-      id: json['id'] as String,
-      diaristaId: json['diarista_id'] as String,
-      data: DateTime.parse(json['data'] as String),
-      status: _parseStatus(json['status'] as String),
-      horaInicio: json['hora_inicio'] != null
-          ? _parseTimeOfDay(json['hora_inicio'] as String)
-          : null,
-      horaFim: json['hora_fim'] != null
-          ? _parseTimeOfDay(json['hora_fim'] as String)
-          : null,
-      notas: json['notas'] as String?,
-    );
+    try {
+      return DiaristaDisponibilidade(
+        id: json['id'].toString(), // Converte int/string para string
+        diaristaId: json['diarista_id'] as String,
+        data: DateTime.parse(json['data'] as String),
+        status: _parseStatus(json['status'] as String),
+        horaInicio: json['hora_inicio'] != null && json['hora_inicio'].toString().isNotEmpty
+            ? _parseTimeOfDay(json['hora_inicio'].toString())
+            : null,
+        horaFim: json['hora_fim'] != null && json['hora_fim'].toString().isNotEmpty
+            ? _parseTimeOfDay(json['hora_fim'].toString())
+            : null,
+        notas: json['notas'] != null ? json['notas'].toString() : null,
+      );
+    } catch (e) {
+      print('❌ [ERROR] Erro ao parsear JSON: $e');
+      print('JSON recebido: $json');
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toJson() {

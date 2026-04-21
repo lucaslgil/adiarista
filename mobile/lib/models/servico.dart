@@ -13,7 +13,8 @@ enum TipoServico {
   limpezaResidencial('limpeza_residencial'),
   limpezaComercial('limpeza_comercial'),
   lavarRoupas('lavar_roupas'),
-  passarRoupas('passar_roupas');
+  passarRoupas('passar_roupas'),
+  lavarEPassar('lavar_e_passar');
 
   final String value;
   const TipoServico(this.value);
@@ -67,6 +68,7 @@ class ServicoConfig {
         ServicoValidators.limpezaComercial(params),
       TipoServico.lavarRoupas => ServicoValidators.lavarRoupas(params),
       TipoServico.passarRoupas => ServicoValidators.passarRoupas(params),
+      TipoServico.lavarEPassar => ServicoValidators.lavarEPassar(params),
     };
   }
 }
@@ -114,6 +116,11 @@ class ServicoValidators {
     }
     return null;
   }
+
+  /// Lavar + Passar exige pelo menos o tamanho do lote (componente lavar)
+  static String? lavarEPassar(Map<String, dynamic> p) {
+    return lavarRoupas(p);
+  }
 }
 
 // ─── Registry Central ────────────────────────────────────────────────────────
@@ -150,6 +157,14 @@ class ServicoRegistry {
       icon: Icons.iron_outlined,
       unidade: UnidadeCobranca.porPeca,
       parametrosObrigatorios: ['quantidadePecas'],
+    ),
+    TipoServico.lavarEPassar: ServicoConfig(
+      tipo: TipoServico.lavarEPassar,
+      label: 'Lavar + Passar',
+      icon: Icons.dry_cleaning_outlined,
+      unidade: UnidadeCobranca.porServico,
+      parametrosObrigatorios: ['tamanho'],
+      parametrosOpcionais: ['quantidadePecas'],
     ),
   };
 

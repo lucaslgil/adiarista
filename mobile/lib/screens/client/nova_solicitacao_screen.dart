@@ -3,8 +3,11 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../models/preco_diarista.dart';
 import '../../models/servico.dart';
+import '../../services/agenda_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/precos_service.dart';
 import '../../services/user_service.dart';
 
 class NovaSolicitacaoScreen extends StatefulWidget {
@@ -33,6 +36,7 @@ class _NovaSolicitacaoScreenState extends State<NovaSolicitacaoScreen> {
   final _observacoesController = TextEditingController();
   DateTime? _dataHora;
   double? _precoEstimado;
+  int? _duracaoMinutos;
 
   @override
   void initState() {
@@ -64,8 +68,40 @@ class _NovaSolicitacaoScreenState extends State<NovaSolicitacaoScreen> {
       };
 
   void _avancar() {
+    if (_etapa == 1) {
+      // Calcular duração estimada
+      if (_tipoSelecionado != null) {
+        setState(() {
+          _duracaoMinutos =
+              DuracaoServico.calcularMinutos(_tipoSelecionado!, _parametros);
+        });
+      }
+      // Calcular estimativa de preço (quando diarista conhecida)
+      if (widget.diaristIdInicial != null) {
+        _calcularEstimativa();
+      }
+    }
     if (_etapa < 5) {
       setState(() => _etapa++);
+    }
+  }
+
+  Future<void> _calcularEstimativa() async {
+    final diaristId = widget.diaristIdInicial;
+    final tipo = _tipoSelecionado;
+    if (diaristId == null || tipo == null) return;
+    try {
+      final precosService = context.read<PrecosService>();
+      final estimativa = await precosService.calcularEstimativa(
+        usuarioDiaristaId: diaristId,
+        tipo: tipo,
+        parametrosCliente: _parametros,
+      );
+      if (mounted && estimativa != null) {
+        setState(() => _precoEstimado = estimativa);
+      }
+    } catch (_) {
+      // Falha silenciosa: estimativa não crítica
     }
   }
 
@@ -98,6 +134,7 @@ class _NovaSolicitacaoScreenState extends State<NovaSolicitacaoScreen> {
         tipoLimpeza: _tipoSelecionado?.value,
         parametros: _parametros.isEmpty ? null : Map.from(_parametros),
         precoEstimado: _precoEstimado,
+        duracaoMinutos: _duracaoMinutos,
       );
 
       if (mounted) {
@@ -272,17 +309,23 @@ class _NovaSolicitacaoScreenState extends State<NovaSolicitacaoScreen> {
             tipoSelecionado: _tipoSelecionado,
             onSelecionar: (t) => setState(() {
               _tipoSelecionado = t;
-              _parametros = {};
+              _parametros = _defaultParams(t);
             }),
           ),
         1 => _EtapaParametros(
             tipo: _tipoSelecionado!,
             parametros: _parametros,
             onAtualizar: (p) => setState(() => _parametros = p),
+            precoEstimado: _precoEstimado,
+            duracaoMinutos: _tipoSelecionado != null
+                ? DuracaoServico.calcularMinutos(_tipoSelecionado!, _parametros)
+                : null,
           ),
         2 => _EtapaEndereco(controller: _enderecoController),
         3 => _EtapaDataHora(
             dataHora: _dataHora,
+            diaristId: widget.diaristIdInicial,
+            duracaoMinutos: _duracaoMinutos,
             onSelecionar: (d) => setState(() => _dataHora = d),
           ),
         4 => _EtapaDescricao(
@@ -291,8 +334,24 @@ class _NovaSolicitacaoScreenState extends State<NovaSolicitacaoScreen> {
             tipoSelecionado: _tipoSelecionado?.value,
             endereco: _enderecoController.text,
             dataHora: _dataHora,
+            precoEstimado: _precoEstimado,
           ),
         _ => const SizedBox(),
+      };
+
+  /// Inicializa parâmetros padrão ao selecionar um serviço.
+  static Map<String, dynamic> _defaultParams(TipoServico tipo) =>
+      switch (tipo) {
+        TipoServico.limpezaResidencial => {
+            'qtd_quartos': 1,
+            'qtd_banheiros': 1,
+            'qtd_salas': 1,
+            'qtd_cozinhas': 1,
+            'quantidadeComodos': 4,
+          },
+        TipoServico.passarRoupas => {'quantidadePecas': 1},
+        TipoServico.lavarEPassar => {'quantidadePecas': 1},
+        _ => {},
       };
 }
 
@@ -398,11 +457,15 @@ class _EtapaParametros extends StatelessWidget {
   final TipoServico tipo;
   final Map<String, dynamic> parametros;
   final void Function(Map<String, dynamic>) onAtualizar;
+  final double? precoEstimado;
+  final int? duracaoMinutos;
 
   const _EtapaParametros({
     required this.tipo,
     required this.parametros,
     required this.onAtualizar,
+    this.precoEstimado,
+    this.duracaoMinutos,
   });
 
   void _set(String key, dynamic value) {
@@ -430,26 +493,84 @@ class _EtapaParametros extends StatelessWidget {
           TipoServico.limpezaComercial => _buildLimpezaComercial(),
           TipoServico.lavarRoupas => _buildLavarRoupas(),
           TipoServico.passarRoupas => _buildPassarRoupas(),
+          TipoServico.lavarEPassar => _buildLavarEPassar(),
         },
+        if (duracaoMinutos != null || precoEstimado != null) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            children: [
+              if (duracaoMinutos != null)
+                _InfoChip(
+                  icon: Icons.schedule_outlined,
+                  label: 'Duração: ${DuracaoServico.formatar(duracaoMinutos!)}',
+                  color: Colors.blue.shade700,
+                ),
+              if (precoEstimado != null)
+                _InfoChip(
+                  icon: Icons.attach_money,
+                  label: 'Estimativa: R\$ ${precoEstimado!.toStringAsFixed(2)}',
+                  color: AppTheme.successColor,
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 24),
       ],
     );
   }
 
   List<Widget> _buildLimpezaResidencial() {
-    final comodos = (parametros['quantidadeComodos'] as int?) ?? 1;
+    final quartos = (parametros['qtd_quartos'] as int?) ?? 1;
+    final banheiros = (parametros['qtd_banheiros'] as int?) ?? 1;
+    final salas = (parametros['qtd_salas'] as int?) ?? 1;
+    final cozinhas = (parametros['qtd_cozinhas'] as int?) ?? 1;
     final nivel = parametros['nivelSujeira'] as String?;
     final pets = (parametros['possuiPets'] as bool?) ?? false;
 
+    void setComodo(String key, int value) {
+      final updated = {...parametros, key: value};
+      // Manter quantidadeComodos como soma (compat. com validador)
+      updated['quantidadeComodos'] =
+          (updated['qtd_quartos'] as int? ?? 1) +
+              (updated['qtd_banheiros'] as int? ?? 1) +
+              (updated['qtd_salas'] as int? ?? 1) +
+              (updated['qtd_cozinhas'] as int? ?? 1);
+      onAtualizar(updated);
+    }
+
     return [
-      const _ParamLabel(label: 'Quantidade de cômodos', obrigatorio: true),
+      const _ParamLabel(label: 'Quartos', obrigatorio: true),
       const SizedBox(height: 8),
       _StepperInput(
-        value: comodos,
-        min: 1,
-        max: 20,
-        onChanged: (v) => _set('quantidadeComodos', v),
-      ),
+          value: quartos,
+          min: 1,
+          max: 10,
+          onChanged: (v) => setComodo('qtd_quartos', v)),
+      const SizedBox(height: 16),
+      const _ParamLabel(label: 'Banheiros', obrigatorio: true),
+      const SizedBox(height: 8),
+      _StepperInput(
+          value: banheiros,
+          min: 0,
+          max: 6,
+          onChanged: (v) => setComodo('qtd_banheiros', v)),
+      const SizedBox(height: 16),
+      const _ParamLabel(label: 'Salas', obrigatorio: true),
+      const SizedBox(height: 8),
+      _StepperInput(
+          value: salas,
+          min: 0,
+          max: 5,
+          onChanged: (v) => setComodo('qtd_salas', v)),
+      const SizedBox(height: 16),
+      const _ParamLabel(label: 'Cozinhas', obrigatorio: true),
+      const SizedBox(height: 8),
+      _StepperInput(
+          value: cozinhas,
+          min: 0,
+          max: 3,
+          onChanged: (v) => setComodo('qtd_cozinhas', v)),
       const SizedBox(height: 20),
       const _ParamLabel(label: 'Nível de sujeira', obrigatorio: true),
       const SizedBox(height: 8),
@@ -542,6 +663,36 @@ class _EtapaParametros extends StatelessWidget {
       _StepperInput(
         value: pecas,
         min: 1,
+        max: 200,
+        step: 5,
+        onChanged: (v) => _set('quantidadePecas', v),
+      ),
+    ];
+  }
+
+  List<Widget> _buildLavarEPassar() {
+    final tamanho = parametros['tamanho'] as String?;
+    final pecas = (parametros['quantidadePecas'] as int?) ?? 1;
+
+    return [
+      const _ParamLabel(label: 'Tamanho do lote de roupas', obrigatorio: true),
+      const SizedBox(height: 8),
+      _OptionSelector<String>(
+        options: const [
+          ('Pequeno', 'pequeno'),
+          ('Médio', 'medio'),
+          ('Grande', 'grande'),
+        ],
+        selected: tamanho,
+        onSelect: (v) => _set('tamanho', v),
+      ),
+      const SizedBox(height: 20),
+      const _ParamLabel(
+          label: 'Peças para passar (opcional)', obrigatorio: false),
+      const SizedBox(height: 8),
+      _StepperInput(
+        value: pecas,
+        min: 0,
         max: 200,
         step: 5,
         onChanged: (v) => _set('quantidadePecas', v),
@@ -783,60 +934,131 @@ class _EtapaEndereco extends StatelessWidget {
 
 // ─── Etapa 3: Data e Hora ─────────────────────────────────────────────────────
 
-class _EtapaDataHora extends StatelessWidget {
+// ─── Etapa 3: Data e Hora ─────────────────────────────────────────────────────
+//
+// Quando diaristId + duracaoMinutos estão disponíveis, exibe uma grade de
+// horários válidos gerados dinamicamente (sem overbooking).
+// Caso contrário, mantém o comportamento de seletor livre.
+
+class _EtapaDataHora extends StatefulWidget {
   final DateTime? dataHora;
   final void Function(DateTime) onSelecionar;
+  final String? diaristId;
+  final int? duracaoMinutos;
 
-  const _EtapaDataHora({required this.dataHora, required this.onSelecionar});
+  const _EtapaDataHora({
+    required this.dataHora,
+    required this.onSelecionar,
+    this.diaristId,
+    this.duracaoMinutos,
+  });
 
-  Future<void> _selecionar(BuildContext context) async {
+  @override
+  State<_EtapaDataHora> createState() => _EtapaDataHoraState();
+}
+
+class _EtapaDataHoraState extends State<_EtapaDataHora> {
+  final _agendaService = AgendaService();
+  DateTime? _dataSelecionada;
+  List<TimeOfDay>? _slots;
+  bool _loadingSlots = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.dataHora != null) {
+      _dataSelecionada = DateTime(
+        widget.dataHora!.year,
+        widget.dataHora!.month,
+        widget.dataHora!.day,
+      );
+    }
+  }
+
+  bool get _modoInteligente =>
+      widget.diaristId != null && widget.duracaoMinutos != null;
+
+  Future<void> _selecionarData(BuildContext context) async {
     final now = DateTime.now();
     final data = await showDatePicker(
       context: context,
-      initialDate: now.add(const Duration(days: 1)),
+      initialDate: _dataSelecionada ?? now.add(const Duration(days: 1)),
       firstDate: now,
       lastDate: now.add(const Duration(days: 90)),
     );
-    if (data == null || !context.mounted) return;
+    if (data == null) return;
 
-    final hora = await showTimePicker(
-      context: context,
-      initialTime: const TimeOfDay(hour: 8, minute: 0),
-    );
-    if (hora == null) return;
+    setState(() {
+      _dataSelecionada = data;
+      _slots = null;
+    });
 
-    onSelecionar(DateTime(
-        data.year, data.month, data.day, hora.hour, hora.minute));
+    if (_modoInteligente && context.mounted) {
+      _carregarSlots(data);
+    } else if (!_modoInteligente && context.mounted) {
+      // Sem diarista: abrir time picker livre
+      final hora = await showTimePicker(
+        context: context,
+        initialTime: const TimeOfDay(hour: 8, minute: 0),
+      );
+      if (hora == null) return;
+      widget.onSelecionar(
+          DateTime(data.year, data.month, data.day, hora.hour, hora.minute));
+    }
+  }
+
+  Future<void> _carregarSlots(DateTime data) async {
+    setState(() => _loadingSlots = true);
+    try {
+      final slots = await _agendaService.getHorariosDisponiveis(
+        diaristaId: widget.diaristId!,
+        data: data,
+        duracaoMinutos: widget.duracaoMinutos!,
+      );
+      if (mounted) setState(() => _slots = slots);
+    } catch (_) {
+      if (mounted) setState(() => _slots = []);
+    } finally {
+      if (mounted) setState(() => _loadingSlots = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final fmt = DateFormat("EEEE, dd 'de' MMMM 'as' HH:mm", 'pt_BR');
+    final fmt = DateFormat("EEEE, dd 'de' MMMM", 'pt_BR');
+    final fmtCompleto = DateFormat("dd/MM 'às' HH:mm", 'pt_BR');
+    final horaSelecionada = widget.dataHora != null
+        ? TimeOfDay.fromDateTime(widget.dataHora!)
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 8),
         const Text(
-          'Quando voce precisa?',
+          'Quando você precisa?',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Escolha a data e horario para o servico',
-          style: TextStyle(color: AppTheme.colorSubtext, fontSize: 15),
+        Text(
+          _modoInteligente
+              ? 'Escolha a data e veja os horários disponíveis'
+              : 'Escolha a data e horário para o serviço',
+          style: const TextStyle(color: AppTheme.colorSubtext, fontSize: 15),
         ),
         const SizedBox(height: 24),
+
+        // Botão de data
         GestureDetector(
-          onTap: () => _selecionar(context),
+          onTap: () => _selecionarData(context),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppTheme.colorSurface,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: dataHora != null
+                color: _dataSelecionada != null
                     ? AppTheme.primaryColor
                     : AppTheme.colorBorder,
               ),
@@ -844,43 +1066,35 @@ class _EtapaDataHora extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: dataHora != null
+                    color: _dataSelecionada != null
                         ? AppTheme.primaryColor
                         : AppTheme.colorBorder,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     Icons.calendar_today_outlined,
-                    color: dataHora != null ? Colors.white : AppTheme.colorSubtext,
+                    size: 20,
+                    color: _dataSelecionada != null
+                        ? Colors.white
+                        : AppTheme.colorSubtext,
                   ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        dataHora != null
-                            ? fmt.format(dataHora!)
-                            : 'Selecionar data e hora',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: dataHora != null
-                              ? AppTheme.colorText
-                              : AppTheme.colorSubtext,
-                        ),
-                      ),
-                      if (dataHora == null)
-                        const Text(
-                          'Toque para escolher',
-                          style: TextStyle(
-                              color: AppTheme.colorSubtext, fontSize: 12),
-                        ),
-                    ],
+                  child: Text(
+                    _dataSelecionada != null
+                        ? fmt.format(_dataSelecionada!)
+                        : 'Selecionar data',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      color: _dataSelecionada != null
+                          ? AppTheme.colorText
+                          : AppTheme.colorSubtext,
+                    ),
                   ),
                 ),
                 const Icon(Icons.chevron_right, color: AppTheme.colorSubtext),
@@ -888,6 +1102,125 @@ class _EtapaDataHora extends StatelessWidget {
             ),
           ),
         ),
+
+        // Slots de horário (apenas modo inteligente)
+        if (_modoInteligente && _dataSelecionada != null) ...[
+          const SizedBox(height: 20),
+          if (_loadingSlots)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_slots != null && _slots!.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_outlined,
+                      color: Colors.orange.shade700),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Sem horários disponíveis nesta data. Tente outro dia.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else if (_slots != null && _slots!.isNotEmpty) ...[
+            const Text(
+              'Horários disponíveis',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
+            if (widget.duracaoMinutos != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Duração estimada: ${DuracaoServico.formatar(widget.duracaoMinutos!)}',
+                style: const TextStyle(
+                    color: AppTheme.colorSubtext, fontSize: 13),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _slots!.map((slot) {
+                final slotStr =
+                    '${slot.hour.toString().padLeft(2, '0')}:${slot.minute.toString().padLeft(2, '0')}';
+                final selecionado = horaSelecionada != null &&
+                    horaSelecionada.hour == slot.hour &&
+                    horaSelecionada.minute == slot.minute;
+                return GestureDetector(
+                  onTap: () => widget.onSelecionar(DateTime(
+                    _dataSelecionada!.year,
+                    _dataSelecionada!.month,
+                    _dataSelecionada!.day,
+                    slot.hour,
+                    slot.minute,
+                  )),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: selecionado
+                          ? AppTheme.primaryColor
+                          : AppTheme.colorSurface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: selecionado
+                            ? AppTheme.primaryColor
+                            : AppTheme.colorBorder,
+                      ),
+                    ),
+                    child: Text(
+                      slotStr,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: selecionado
+                            ? Colors.white
+                            : AppTheme.colorText,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+
+        // Resumo quando selecionado
+        if (widget.dataHora != null) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.successColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: AppTheme.successColor.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle_outline,
+                    color: AppTheme.successColor, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  fmtCompleto.format(widget.dataHora!),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 24),
       ],
     );
@@ -902,6 +1235,7 @@ class _EtapaDescricao extends StatelessWidget {
   final String? tipoSelecionado;
   final String endereco;
   final DateTime? dataHora;
+  final double? precoEstimado;
 
   const _EtapaDescricao({
     required this.descricaoController,
@@ -909,6 +1243,7 @@ class _EtapaDescricao extends StatelessWidget {
     required this.tipoSelecionado,
     required this.endereco,
     required this.dataHora,
+    this.precoEstimado,
   });
 
   @override
@@ -953,6 +1288,15 @@ class _EtapaDescricao extends StatelessWidget {
                     icon: Icons.schedule_outlined,
                     texto: fmt.format(dataHora!)),
               ],
+              if (precoEstimado != null) ...[
+                const Divider(height: 12),
+                _ResumoLinha(
+                  icon: Icons.attach_money,
+                  texto:
+                      'Estimativa: R\$ ${precoEstimado!.toStringAsFixed(2)}',
+                  cor: AppTheme.successColor,
+                ),
+              ],
             ],
           ),
         ),
@@ -993,24 +1337,70 @@ class _EtapaDescricao extends StatelessWidget {
 class _ResumoLinha extends StatelessWidget {
   final IconData icon;
   final String texto;
+  final Color? cor;
 
-  const _ResumoLinha({required this.icon, required this.texto});
+  const _ResumoLinha({required this.icon, required this.texto, this.cor});
 
   @override
   Widget build(BuildContext context) {
+    final iconColor = cor ?? AppTheme.colorSubtext;
+    final textStyle = cor != null
+        ? TextStyle(fontSize: 14, color: cor, fontWeight: FontWeight.w600)
+        : const TextStyle(fontSize: 14);
     return Row(
       children: [
-        Icon(icon, size: 18, color: AppTheme.colorSubtext),
+        Icon(icon, size: 18, color: iconColor),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             texto,
-            style: const TextStyle(fontSize: 14),
+            style: textStyle,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Chip informativo ────────────────────────────────────────────────────────
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

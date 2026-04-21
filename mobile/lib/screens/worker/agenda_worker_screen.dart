@@ -2,6 +2,7 @@
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/agendamento_diarista.dart';
+import '../../models/bloqueio_recorrente.dart';
 import '../../models/configuracao_agenda.dart';
 import '../../models/diarista_disponibilidade.dart';
 import '../../services/agenda_service.dart';
@@ -21,11 +22,33 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
   DateTime _mesSelecionado = DateTime.now();
   Map<String, DiaristaDisponibilidade> _disponibilidades = {};
   Map<String, List<AgendamentoDiarista>> _agendamentos = {};
+  List<BloqueioRecorrente> _bloqueiosRecorrentes = [];
+  ConfiguracaoAgenda? _configuracaoAgenda;
 
   @override
   void initState() {
     super.initState();
-    _carregarMes();
+    _carregarTudo();
+  }
+
+  Future<void> _carregarTudo() async {
+    final userId = context.read<AuthService>().currentUserId;
+    if (userId == null) return;
+    await Future.wait([
+      _carregarMes(),
+      _carregarRecorrentes(userId),
+      _carregarConfiguracao(userId),
+    ]);
+  }
+
+  Future<void> _carregarConfiguracao(String userId) async {
+    final config = await _agendaService.getConfiguracaoAgenda(userId);
+    if (mounted) setState(() => _configuracaoAgenda = config);
+  }
+
+  Future<void> _carregarRecorrentes(String userId) async {
+    final lista = await _agendaService.getBloqueiosRecorrentes(diaristaId: userId);
+    if (mounted) setState(() => _bloqueiosRecorrentes = lista);
   }
 
   String _chave(DateTime d) =>
@@ -39,6 +62,8 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
       final inicio = DateTime(_mesSelecionado.year, _mesSelecionado.month, 1);
       final fim = DateTime(_mesSelecionado.year, _mesSelecionado.month + 1, 0);
 
+      print('🔄 [DEBUG] Carregando disponibilidades de ${_chave(inicio)} até ${_chave(fim)}');
+
       final disp = await _agendaService.getDisponibilidade(
         diaristaId: userId,
         inicio: inicio,
@@ -50,9 +75,12 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
         fim: fim,
       );
 
+      print('📦 [DEBUG] ${disp.length} disponibilidades carregadas:');
       final dispMap = <String, DiaristaDisponibilidade>{};
       for (final d in disp) {
-        dispMap[_chave(d.data)] = d;
+        final chaveData = _chave(d.data);
+        print('  📅 ${chaveData} -> ${d.status.name}');
+        dispMap[chaveData] = d;
       }
 
       final agMap = <String, List<AgendamentoDiarista>>{};
@@ -62,12 +90,17 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
         agMap[k]!.add(a);
       }
 
+      print('✔️ [DEBUG] Mapa de disponibilidades preparado com ${dispMap.length} chaves');
+
       if (mounted) {
         setState(() {
           _disponibilidades = dispMap;
           _agendamentos = agMap;
         });
+        print('🎨 [DEBUG] setState acionado, calendário deve atualizar agora');
       }
+    } catch (e) {
+      print('❌ [ERROR] Erro ao carregar mês: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -89,7 +122,11 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
     final disp = _disponibilidades[chave];
     final ags = _agendamentos[chave] ?? [];
 
-    await showModalBottomSheet(
+    final recorrentesAtivos = _bloqueiosRecorrentes
+        .where((r) => r.aplicaNaData(data))
+        .toList();
+
+    final acao = await showModalBottomSheet<_AcaoDia>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -97,16 +134,90 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
         data: data,
         disponibilidade: disp,
         agendamentos: ags,
-        onSalvar: (status) async {
+        bloqueiosRecorrentes: recorrentesAtivos,
+      ),
+    );
+
+    if (acao == null) return;
+
+    try {
+      switch (acao) {
+        case _AcaoDia.bloquearDia:
           await _agendaService.salvarDisponibilidade(
             diaristaId: userId,
             data: data,
-            status: status,
+            status: StatusDisponibilidade.bloqueado,
           );
-          await _carregarMes();
-        },
-      ),
-    );
+        case _AcaoDia.bloquearSemanal:
+          // Se já existe regra semanal ativa, remove (toggle)
+          if (recorrentesAtivos.isNotEmpty) {
+            for (final r in recorrentesAtivos) {
+              await _agendaService.removerBloqueioRecorrente(id: r.id);
+            }
+          } else {
+            await _agendaService.salvarBloqueioRecorrente(
+              diaristaId: userId,
+              tipo: TipoRecorrencia.semanal,
+              valor: data.weekday % 7, // 0=Dom...6=Sab
+              dataInicio: DateTime(data.year, data.month, data.day),
+            );
+            // Bloqueia também este dia específico
+            await _agendaService.salvarDisponibilidade(
+              diaristaId: userId,
+              data: data,
+              status: StatusDisponibilidade.bloqueado,
+            );
+          }
+          await _carregarRecorrentes(userId);
+        case _AcaoDia.liberarDia:
+          // Remove bloqueio manual (se existir)
+          await _agendaService.removerDisponibilidade(
+            diaristaId: userId,
+            data: data,
+          );
+          // Se o dia não está nos dias de trabalho, salva override explícito
+          final diaSemana = data.weekday % 7;
+          final naoDiaTrab = _configuracaoAgenda != null &&
+              !_configuracaoAgenda!.diasTrabalho.contains(diaSemana);
+          if (naoDiaTrab) {
+            await _agendaService.salvarDisponibilidade(
+              diaristaId: userId,
+              data: data,
+              status: StatusDisponibilidade.integral,
+            );
+          }
+      }
+
+      await Future.delayed(const Duration(milliseconds: 200));
+      await _carregarMes();
+
+      if (mounted) {
+        final msgs = {
+          _AcaoDia.bloquearDia: 'Dia bloqueado!',
+          _AcaoDia.bloquearSemanal: recorrentesAtivos.isNotEmpty
+              ? 'Bloqueio recorrente removido!'
+              : 'Bloqueio semanal ativado!',
+          _AcaoDia.liberarDia: 'Dia liberado!',
+        };
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msgs[acao]!, style: const TextStyle(color: Colors.white)),
+            backgroundColor: AppTheme.successColor,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro: $e', style: const TextStyle(color: Colors.white)),
+            backgroundColor: AppTheme.errorColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -141,14 +252,11 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 children: [
-                  _LegendaDot(
-                      cor: AppTheme.colorSubtext.withAlpha(80),
-                      label: 'Bloqueado'),
+                  _LegendaDot(cor: AppTheme.successColor, label: 'Disponível'),
                   const SizedBox(width: 12),
-                  _LegendaDot(
-                      cor: AppTheme.warningColor, label: 'Meio Período'),
+                  _LegendaDot(cor: const Color(0xFFE53935), label: 'Bloqueado'),
                   const SizedBox(width: 12),
-                  _LegendaDot(cor: AppTheme.successColor, label: 'Integral'),
+                  _LegendaDot(cor: AppTheme.accentBlue, label: 'Agendamento'),
                 ],
               ),
             ),
@@ -208,6 +316,8 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
                 mes: _mesSelecionado,
                 disponibilidades: _disponibilidades,
                 agendamentos: _agendamentos,
+                bloqueiosRecorrentes: _bloqueiosRecorrentes,
+                configuracaoAgenda: _configuracaoAgenda,
                 onDiaTocado: _abrirOpcoesDia,
               ),
             ),
@@ -255,23 +365,59 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
   }
 }
 
+// ─── Ações do dia ────────────────────────────────────────────────────────────
+
+enum _AcaoDia { bloquearDia, bloquearSemanal, liberarDia }
+
 // ─── Grade Calendário ─────────────────────────────────────────────────────────
 
 class _CalendarGrid extends StatelessWidget {
   final DateTime mes;
   final Map<String, DiaristaDisponibilidade> disponibilidades;
   final Map<String, List<AgendamentoDiarista>> agendamentos;
+  final List<BloqueioRecorrente> bloqueiosRecorrentes;
+  final ConfiguracaoAgenda? configuracaoAgenda;
   final void Function(DateTime) onDiaTocado;
 
   const _CalendarGrid({
     required this.mes,
     required this.disponibilidades,
     required this.agendamentos,
+    required this.bloqueiosRecorrentes,
+    required this.configuracaoAgenda,
     required this.onDiaTocado,
   });
 
   String _chave(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Retorna o status efetivo do dia considerando a hierarquia:
+  /// 1. Override manual (disponibilidade específica para essa data)
+  /// 2. Bloqueio recorrente semanal ativo
+  /// 3. Dias de trabalho configurados
+  /// 4. null = sem configuração (jornada não definida)
+  StatusDisponibilidade? _statusEfetivo(
+      DateTime data, DiaristaDisponibilidade? dispManual) {
+    // 1. Override manual tem prioridade absoluta
+    if (dispManual != null) return dispManual.status;
+
+    // 2. Sem configuração de jornada → inconclusivo
+    if (configuracaoAgenda == null) return null;
+
+    // 3. Bloqueio recorrente ativo
+    for (final regra in bloqueiosRecorrentes) {
+      if (regra.aplicaNaData(data)) return StatusDisponibilidade.bloqueado;
+    }
+
+    // 4. Dia fora dos dias de trabalho
+    final diaSemana = data.weekday % 7; // Dart weekday: 1=Seg...7=Dom → 0=Dom...6=Sab
+    if (!configuracaoAgenda!.diasTrabalho.contains(diaSemana)) {
+      return StatusDisponibilidade.bloqueado;
+    }
+
+    // 5. Disponível!
+    return StatusDisponibilidade.integral;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -281,12 +427,10 @@ class _CalendarGrid extends StatelessWidget {
 
     final cells = <Widget>[];
 
-    // Células vazias antes do dia 1
     for (int i = 0; i < offsetInicio; i++) {
       cells.add(const SizedBox());
     }
 
-    // Dias do mês
     for (int dia = 1; dia <= diasNoMes; dia++) {
       final data = DateTime(mes.year, mes.month, dia);
       final chave = _chave(data);
@@ -294,21 +438,46 @@ class _CalendarGrid extends StatelessWidget {
       final ags = agendamentos[chave] ?? [];
       final isPast =
           data.isBefore(DateTime.now().subtract(const Duration(days: 1)));
-      final isHoje = _chave(data) == _chave(DateTime.now());
+      final isHoje = chave == _chave(DateTime.now());
+      final temAgendamento = ags.any((a) =>
+          a.status != StatusAgendamento.cancelado &&
+          a.status != StatusAgendamento.finalizado);
+
+      final statusEfetivo = _statusEfetivo(data, disp);
+      final isRecorrente = disp == null &&
+          bloqueiosRecorrentes.any((r) => r.aplicaNaData(data));
 
       Color bg;
       Color textColor;
-      if (disp == null || disp.status == StatusDisponibilidade.bloqueado) {
-        bg =
-            isPast ? AppTheme.colorBorder.withAlpha(60) : AppTheme.colorSurface;
-        textColor =
-            isPast ? AppTheme.colorSubtext.withAlpha(100) : AppTheme.colorText;
-      } else if (disp.status == StatusDisponibilidade.meioPeriodo) {
-        bg = AppTheme.warningColor.withAlpha(30);
-        textColor = AppTheme.warningColor;
+
+      if (temAgendamento && !isPast) {
+        // Agendado → azul
+        bg = AppTheme.accentBlue.withAlpha(22);
+        textColor = AppTheme.accentBlue;
+      } else if (statusEfetivo == null) {
+        // Sem configuração → cinza neutro
+        bg = isPast
+            ? AppTheme.colorBorder.withAlpha(40)
+            : AppTheme.colorSurface;
+        textColor = isPast
+            ? AppTheme.colorSubtext.withAlpha(80)
+            : AppTheme.colorSubtext;
+      } else if (statusEfetivo == StatusDisponibilidade.bloqueado) {
+        // Bloqueado → vermelho
+        bg = isPast
+            ? const Color(0xFFFFCDD2).withAlpha(50)
+            : const Color(0xFFFFEBEE);
+        textColor = isPast
+            ? Colors.red.withAlpha(80)
+            : const Color(0xFFE53935);
       } else {
-        bg = AppTheme.successColor.withAlpha(25);
-        textColor = AppTheme.successColor;
+        // Disponível → verde
+        bg = isPast
+            ? AppTheme.successColor.withAlpha(15)
+            : AppTheme.successColor.withAlpha(28);
+        textColor = isPast
+            ? AppTheme.successColor.withAlpha(100)
+            : AppTheme.successColor;
       }
 
       cells.add(
@@ -322,35 +491,42 @@ class _CalendarGrid extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: isHoje
                   ? Border.all(color: AppTheme.accentBlue, width: 2)
-                  : null,
+                  : statusEfetivo == StatusDisponibilidade.bloqueado && !isPast
+                      ? Border.all(
+                          color: const Color(0xFFEF9A9A), width: 1)
+                      : null,
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Stack(
               children: [
-                Text(
-                  '$dia',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: isHoje ? FontWeight.w700 : FontWeight.w500,
-                    color: isHoje ? AppTheme.accentBlue : textColor,
+                // Ícone pequeno: recorrente ou agendado
+                if (!isPast && isRecorrente)
+                  const Positioned(
+                    top: 2,
+                    right: 3,
+                    child: Icon(Icons.repeat, size: 9,
+                        color: Color(0xFFE53935)),
                   ),
-                ),
-                if (ags.isNotEmpty)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      ags.length.clamp(0, 2),
-                      (_) => Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 1),
-                        width: 5,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: AppTheme.accentBlue,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
+                if (!isPast && temAgendamento)
+                  Positioned(
+                    top: 2,
+                    right: isRecorrente ? 14 : 3,
+                    child: Icon(Icons.circle, size: 6,
+                        color: AppTheme.accentBlue.withAlpha(200)),
+                  ),
+                Center(
+                  child: Text(
+                    '$dia',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isHoje ? FontWeight.w700 : FontWeight.w500,
+                      color: isHoje ? AppTheme.accentBlue : textColor,
+                      decoration: statusEfetivo == StatusDisponibilidade.bloqueado && !temAgendamento
+                          ? TextDecoration.lineThrough
+                          : null,
+                      decorationColor: const Color(0xFFEF9A9A),
                     ),
                   ),
+                ),
               ],
             ),
           ),
@@ -499,70 +675,45 @@ class _AgendamentoTile extends StatelessWidget {
 
 // ─── Bottom Sheet: Opções do Dia ──────────────────────────────────────────────
 
-class _DayOptionsSheet extends StatefulWidget {
+class _DayOptionsSheet extends StatelessWidget {
   final DateTime data;
   final DiaristaDisponibilidade? disponibilidade;
   final List<AgendamentoDiarista> agendamentos;
-  final Future<void> Function(StatusDisponibilidade) onSalvar;
+  final List<BloqueioRecorrente> bloqueiosRecorrentes;
 
   const _DayOptionsSheet({
     required this.data,
     required this.disponibilidade,
     required this.agendamentos,
-    required this.onSalvar,
+    required this.bloqueiosRecorrentes,
   });
 
-  @override
-  State<_DayOptionsSheet> createState() => _DayOptionsSheetState();
-}
-
-class _DayOptionsSheetState extends State<_DayOptionsSheet> {
-  late StatusDisponibilidade _statusSelecionado;
-  bool _salvando = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _statusSelecionado =
-        widget.disponibilidade?.status ?? StatusDisponibilidade.bloqueado;
+  String _formatarData(DateTime d) {
+    const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    return '${dias[d.weekday - 1]}, ${d.day} de ${meses[d.month - 1]}';
   }
 
-  String _formatarData(DateTime d) {
-    const dias = [
-      'Segunda',
-      'Terça',
-      'Quarta',
-      'Quinta',
-      'Sexta',
-      'Sábado',
-      'Domingo'
-    ];
-    const meses = [
-      'Jan',
-      'Fev',
-      'Mar',
-      'Abr',
-      'Mai',
-      'Jun',
-      'Jul',
-      'Ago',
-      'Set',
-      'Out',
-      'Nov',
-      'Dez'
-    ];
-    return '${dias[d.weekday - 1]}, ${d.day} de ${meses[d.month - 1]}';
+  String _nomeDiaSemana(int weekday) {
+    const nomes = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    return nomes[(weekday - 1).clamp(0, 6)];
   }
 
   @override
   Widget build(BuildContext context) {
+    final temRecorrente = bloqueiosRecorrentes.isNotEmpty;
+    final diaNome = _nomeDiaSemana(data.weekday);
+    final bloqueioBtn = temRecorrente
+        ? 'Remover bloqueio de toda $diaNome'
+        : 'Bloquear toda $diaNome';
+
     return Container(
       decoration: const BoxDecoration(
         color: AppTheme.colorBackground,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(
-          20, 20, 20, MediaQuery.of(context).padding.bottom + 20),
+          20, 20, 20, MediaQuery.of(context).padding.bottom + 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -580,33 +731,37 @@ class _DayOptionsSheetState extends State<_DayOptionsSheet> {
           ),
           const SizedBox(height: 16),
 
+          // Cabeçalho
           Text(
-            _formatarData(widget.data),
+            _formatarData(data),
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
+          Text(
+            agendamentos.isEmpty
+                ? 'Nenhum agendamento'
+                : '${agendamentos.length} agendamento(s)',
+            style: const TextStyle(fontSize: 12, color: AppTheme.colorSubtext),
+          ),
 
           // Agendamentos existentes
-          if (widget.agendamentos.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ...widget.agendamentos.map(
+          if (agendamentos.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            ...agendamentos.map(
               (a) => Container(
                 margin: const EdgeInsets.only(bottom: 6),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppTheme.accentBlue.withAlpha(12),
+                  color: AppTheme.accentBlue.withAlpha(14),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_month,
-                        size: 14, color: AppTheme.accentBlue),
+                    const Icon(Icons.calendar_month, size: 14, color: AppTheme.accentBlue),
                     const SizedBox(width: 8),
                     Text(
                       '${a.tipoServico.label} • ${a.horarioFormatado}',
-                      style: const TextStyle(
-                          fontSize: 13, color: AppTheme.accentBlue),
+                      style: const TextStyle(fontSize: 13, color: AppTheme.accentBlue),
                     ),
                   ],
                 ),
@@ -614,73 +769,39 @@ class _DayOptionsSheetState extends State<_DayOptionsSheet> {
             ),
           ],
 
-          const SizedBox(height: 16),
-          const Text(
-            'Disponibilidade',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.colorSubtext),
-          ),
-          const SizedBox(height: 10),
-
-          // Opções de status
-          _StatusOption(
-            status: StatusDisponibilidade.bloqueado,
-            selecionado: _statusSelecionado == StatusDisponibilidade.bloqueado,
-            onTap: () => setState(
-                () => _statusSelecionado = StatusDisponibilidade.bloqueado),
-            descricao: 'Dia indisponível',
-          ),
-          const SizedBox(height: 8),
-          _StatusOption(
-            status: StatusDisponibilidade.meioPeriodo,
-            selecionado:
-                _statusSelecionado == StatusDisponibilidade.meioPeriodo,
-            onTap: () => setState(
-                () => _statusSelecionado = StatusDisponibilidade.meioPeriodo),
-            descricao: 'Aceita até 2 clientes de 4h',
-          ),
-          const SizedBox(height: 8),
-          _StatusOption(
-            status: StatusDisponibilidade.integral,
-            selecionado: _statusSelecionado == StatusDisponibilidade.integral,
-            onTap: () => setState(
-                () => _statusSelecionado = StatusDisponibilidade.integral),
-            descricao: 'Disponível para 1 cliente de 8h',
-          ),
-
           const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
 
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              onPressed: _salvando
-                  ? null
-                  : () async {
-                      setState(() => _salvando = true);
-                      await widget.onSalvar(_statusSelecionado);
-                      if (mounted) Navigator.pop(context);
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: _salvando
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Salvar',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            ),
+          // Ação 1: Bloquear este dia
+          _AcaoTile(
+            icone: Icons.block_outlined,
+            cor: const Color(0xFFE53935),
+            titulo: 'Bloquear este dia',
+            subtitulo: 'Indisponível apenas em ${data.day}/${data.month}',
+            onTap: () => Navigator.pop(context, _AcaoDia.bloquearDia),
+          ),
+          const SizedBox(height: 8),
+
+          // Ação 2: Bloquear / remover toda semana
+          _AcaoTile(
+            icone: temRecorrente ? Icons.repeat_on : Icons.repeat,
+            cor: temRecorrente ? Colors.orange : Colors.deepPurple,
+            titulo: bloqueioBtn,
+            subtitulo: temRecorrente
+                ? 'Remove o bloqueio semanal de $diaNome'
+                : 'Bloqueia todo(a) $diaNome automaticamente',
+            onTap: () => Navigator.pop(context, _AcaoDia.bloquearSemanal),
+          ),
+          const SizedBox(height: 8),
+
+          // Ação 3: Liberar este dia
+          _AcaoTile(
+            icone: Icons.check_circle_outline,
+            cor: AppTheme.successColor,
+            titulo: 'Liberar este dia',
+            subtitulo: 'Marcar como disponível em ${data.day}/${data.month}',
+            onTap: () => Navigator.pop(context, _AcaoDia.liberarDia),
           ),
         ],
       ),
@@ -688,67 +809,67 @@ class _DayOptionsSheetState extends State<_DayOptionsSheet> {
   }
 }
 
-class _StatusOption extends StatelessWidget {
-  final StatusDisponibilidade status;
-  final bool selecionado;
-  final VoidCallback onTap;
-  final String descricao;
+// ─── Tile de Ação ─────────────────────────────────────────────────────────────
 
-  const _StatusOption({
-    required this.status,
-    required this.selecionado,
+class _AcaoTile extends StatelessWidget {
+  final IconData icone;
+  final Color cor;
+  final String titulo;
+  final String subtitulo;
+  final VoidCallback onTap;
+
+  const _AcaoTile({
+    required this.icone,
+    required this.cor,
+    required this.titulo,
+    required this.subtitulo,
     required this.onTap,
-    required this.descricao,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selecionado ? status.cor.withAlpha(20) : AppTheme.colorSurface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selecionado ? status.cor : AppTheme.colorBorder,
-            width: selecionado ? 1.5 : 1,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: cor.withAlpha(14),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cor.withAlpha(60), width: 1),
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: status.cor,
-                shape: BoxShape.circle,
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: cor.withAlpha(22),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icone, color: cor, size: 20),
               ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  status.label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: selecionado ? status.cor : AppTheme.colorText,
-                  ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(titulo,
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            color: cor)),
+                    const SizedBox(height: 2),
+                    Text(subtitulo,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.colorSubtext)),
+                  ],
                 ),
-                Text(
-                  descricao,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppTheme.colorSubtext),
-                ),
-              ],
-            ),
-            const Spacer(),
-            if (selecionado)
-              Icon(Icons.check_circle, color: status.cor, size: 20),
-          ],
+              ),
+              Icon(Icons.chevron_right, color: cor.withAlpha(140), size: 20),
+            ],
+          ),
         ),
       ),
     );

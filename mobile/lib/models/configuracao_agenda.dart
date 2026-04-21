@@ -37,6 +37,8 @@ class ConfiguracaoAgenda {
   final TimeOfDay horaInicioPadrao; // ex: 08:00
   final TimeOfDay horaFimPadrao; // ex: 18:00
   final int tempoDeslocamentoMinutos; // padrão: 30 min
+  /// Dias de trabalho: 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab
+  final List<int> diasTrabalho;
 
   ConfiguracaoAgenda({
     required this.id,
@@ -44,7 +46,8 @@ class ConfiguracaoAgenda {
     required this.horaInicioPadrao,
     required this.horaFimPadrao,
     this.tempoDeslocamentoMinutos = 30,
-  });
+    List<int>? diasTrabalho,
+  }) : diasTrabalho = diasTrabalho ?? const [1, 2, 3, 4, 5];
 
   // Calcular duração total disponível
   int get duracaoTotalMinutos {
@@ -61,6 +64,10 @@ class ConfiguracaoAgenda {
       horaInicioPadrao: _parseTimeOfDay(json['hora_inicio_padrao'] as String),
       horaFimPadrao: _parseTimeOfDay(json['hora_fim_padrao'] as String),
       tempoDeslocamentoMinutos: json['tempo_deslocamento_minutos'] as int? ?? 30,
+      diasTrabalho: (json['dias_trabalho'] as List?)
+              ?.map((e) => e as int)
+              .toList() ??
+          [1, 2, 3, 4, 5],
     );
   }
 
@@ -71,6 +78,7 @@ class ConfiguracaoAgenda {
       'hora_inicio_padrao': '${horaInicioPadrao.hour.toString().padLeft(2, '0')}:${horaInicioPadrao.minute.toString().padLeft(2, '0')}',
       'hora_fim_padrao': '${horaFimPadrao.hour.toString().padLeft(2, '0')}:${horaFimPadrao.minute.toString().padLeft(2, '0')}',
       'tempo_deslocamento_minutos': tempoDeslocamentoMinutos,
+      'dias_trabalho': diasTrabalho,
     };
   }
 }

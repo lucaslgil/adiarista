@@ -8,6 +8,7 @@ import '../screens/client/buscar_diaristas_screen.dart';
 import '../screens/client/nova_solicitacao_screen.dart';
 import '../screens/client/agenda_cliente_screen.dart';
 import '../screens/worker/home_worker_screen.dart';
+import '../screens/worker/configurar_precos_screen.dart';
 import '../screens/admin/admin_home_screen.dart';
 
 /// Configuração de roteamento do aplicativo
@@ -70,6 +71,10 @@ class AppRouter {
             diaristIdInicial: extra?['diaristId'] as String?,
           );
         },
+      ),
+      GoRoute(
+        path: '/configurar-precos',
+        builder: (context, state) => const ConfigurarPrecosScreen(),
       ),
       GoRoute(
         path: '/agenda-cliente',

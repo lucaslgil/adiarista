@@ -79,6 +79,11 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
     if (mounted) await _loadData();
   }
 
+  Future<void> _abrirLocaisAtendimento() async {
+    await context.push('/locais-atendimento');
+    if (mounted) await _loadData();
+  }
+
   Future<void> _toggleDisponibilidade(bool valor) async {
     final authService = context.read<AuthService>();
     final userService = context.read<UserService>();
@@ -170,7 +175,9 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _EditarPerfilSheet(
         perfil: _perfil!,
-        onSalvar: (descricao, preco, precoMeio, regiao, especialidades) async {
+        onSalvar:
+            (nome, descricao, preco, precoMeio, regiao, especialidades) async {
+          await userService.updateUser(userId: userId, nome: nome);
           await userService.updateDiaristaPerfil(
             userId: userId,
             descricao: descricao,
@@ -211,6 +218,7 @@ class _HomeWorkerScreenState extends State<HomeWorkerScreen> {
             onLogout: _handleLogout,
             onEditarPerfil: _abrirEdicaoPerfil,
             onConfigurarPrecos: _abrirConfigurarPrecos,
+            onLocaisAtendimento: _abrirLocaisAtendimento,
           ),
         ],
       ),
@@ -803,6 +811,7 @@ class _PerfilWorkerTab extends StatelessWidget {
   final VoidCallback onLogout;
   final VoidCallback onEditarPerfil;
   final VoidCallback onConfigurarPrecos;
+  final VoidCallback onLocaisAtendimento;
 
   const _PerfilWorkerTab({
     required this.nome,
@@ -811,6 +820,7 @@ class _PerfilWorkerTab extends StatelessWidget {
     required this.onLogout,
     required this.onEditarPerfil,
     required this.onConfigurarPrecos,
+    required this.onLocaisAtendimento,
   });
 
   @override
@@ -907,6 +917,14 @@ class _PerfilWorkerTab extends StatelessWidget {
                   label: 'Configurar Preços',
                   badge: !precoConfigurado ? 'Pendente' : null,
                   onTap: onConfigurarPrecos,
+                ),
+                _MenuTile(
+                  icon: Icons.map_outlined,
+                  label: 'Locais de Atendimento',
+                  badge: perfil != null && perfil!.cidadesAtendidas.isEmpty
+                      ? 'Pendente'
+                      : null,
+                  onTap: onLocaisAtendimento,
                 ),
                 _MenuTile(
                   icon: Icons.star_border_outlined,
@@ -1007,8 +1025,8 @@ class _MenuTile extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppTheme.warningColor.withAlpha(25),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: AppTheme.warningColor.withAlpha(80)),
+                    border:
+                        Border.all(color: AppTheme.warningColor.withAlpha(80)),
                   ),
                   child: Text(
                     badge!,
@@ -1035,6 +1053,7 @@ class _MenuTile extends StatelessWidget {
 // ─── Bottom Sheet: Editar Perfil / Valores ────────────────────────────────────
 
 typedef _OnSalvarPerfil = Future<void> Function(
+  String nome,
   String descricao,
   double preco,
   double precoMeio,
@@ -1056,6 +1075,7 @@ class _EditarPerfilSheet extends StatefulWidget {
 }
 
 class _EditarPerfilSheetState extends State<_EditarPerfilSheet> {
+  late final TextEditingController _nomeCtrl;
   late final TextEditingController _descricaoCtrl;
   late final TextEditingController _precoCtrl;
   late final TextEditingController _precoMeioCtrl;
@@ -1068,6 +1088,7 @@ class _EditarPerfilSheetState extends State<_EditarPerfilSheet> {
   @override
   void initState() {
     super.initState();
+    _nomeCtrl = TextEditingController(text: widget.perfil.nome);
     _descricaoCtrl = TextEditingController(text: widget.perfil.descricao);
     _precoCtrl =
         TextEditingController(text: widget.perfil.preco.toStringAsFixed(0));
@@ -1080,6 +1101,7 @@ class _EditarPerfilSheetState extends State<_EditarPerfilSheet> {
 
   @override
   void dispose() {
+    _nomeCtrl.dispose();
     _descricaoCtrl.dispose();
     _precoCtrl.dispose();
     _precoMeioCtrl.dispose();
@@ -1102,6 +1124,7 @@ class _EditarPerfilSheetState extends State<_EditarPerfilSheet> {
     setState(() => _salvando = true);
     try {
       await widget.onSalvar(
+        _nomeCtrl.text.trim(),
         _descricaoCtrl.text.trim(),
         double.parse(_precoCtrl.text.replaceAll(',', '.')),
         double.parse(_precoMeioCtrl.text.replaceAll(',', '.')),
@@ -1165,6 +1188,19 @@ class _EditarPerfilSheetState extends State<_EditarPerfilSheet> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 20),
+
+              // ── Nome ───────────────────────────────────────────────
+              const _FieldLabel(text: 'Nome'),
+              const SizedBox(height: 6),
+              TextFormField(
+                controller: _nomeCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: _inputDecoration('Ex: Maria Silva'),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Campo obrigatório'
+                    : null,
+              ),
+              const SizedBox(height: 16),
 
               // ── Descrição ──────────────────────────────────────────
               const _FieldLabel(text: 'Descrição profissional'),

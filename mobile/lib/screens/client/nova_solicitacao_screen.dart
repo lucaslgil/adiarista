@@ -3,10 +3,12 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../models/endereco_cliente.dart';
 import '../../models/preco_diarista.dart';
 import '../../models/servico.dart';
 import '../../services/agenda_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/endereco_service.dart';
 import '../../services/precos_service.dart';
 import '../../services/user_service.dart';
 
@@ -277,8 +279,8 @@ class _NovaSolicitacaoScreenState extends State<NovaSolicitacaoScreen> {
                   : null,
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 56),
-                textStyle: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600),
+                textStyle:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
               child: _isLoading
                   ? const SizedBox(
@@ -407,9 +409,8 @@ class _EtapaTipo extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(config.icon,
-                        color: selecionado
-                            ? Colors.white
-                            : AppTheme.colorSubtext,
+                        color:
+                            selecionado ? Colors.white : AppTheme.colorSubtext,
                         size: 24),
                     const SizedBox(width: 10),
                     Expanded(
@@ -525,17 +526,24 @@ class _EtapaParametros extends StatelessWidget {
     final banheiros = (parametros['qtd_banheiros'] as int?) ?? 1;
     final salas = (parametros['qtd_salas'] as int?) ?? 1;
     final cozinhas = (parametros['qtd_cozinhas'] as int?) ?? 1;
-    final nivel = parametros['nivelSujeira'] as String?;
     final pets = (parametros['possuiPets'] as bool?) ?? false;
+
+    final lavanderia = (parametros['qtd_lavanderia'] as int?) ?? 0;
+    final garagem = (parametros['qtd_garagem'] as int?) ?? 0;
+    final gourmet = (parametros['qtd_gourmet'] as int?) ?? 0;
+    final escritorio = (parametros['qtd_escritorio'] as int?) ?? 0;
 
     void setComodo(String key, int value) {
       final updated = {...parametros, key: value};
       // Manter quantidadeComodos como soma (compat. com validador)
-      updated['quantidadeComodos'] =
-          (updated['qtd_quartos'] as int? ?? 1) +
-              (updated['qtd_banheiros'] as int? ?? 1) +
-              (updated['qtd_salas'] as int? ?? 1) +
-              (updated['qtd_cozinhas'] as int? ?? 1);
+      updated['quantidadeComodos'] = (updated['qtd_quartos'] as int? ?? 1) +
+          (updated['qtd_banheiros'] as int? ?? 1) +
+          (updated['qtd_salas'] as int? ?? 1) +
+          (updated['qtd_cozinhas'] as int? ?? 1) +
+          (updated['qtd_lavanderia'] as int? ?? 0) +
+          (updated['qtd_garagem'] as int? ?? 0) +
+          (updated['qtd_gourmet'] as int? ?? 0) +
+          (updated['qtd_escritorio'] as int? ?? 0);
       onAtualizar(updated);
     }
 
@@ -572,17 +580,41 @@ class _EtapaParametros extends StatelessWidget {
           max: 3,
           onChanged: (v) => setComodo('qtd_cozinhas', v)),
       const SizedBox(height: 20),
-      const _ParamLabel(label: 'Nível de sujeira', obrigatorio: true),
+      const _ParamLabel(
+          label: 'Ambientes adicionais (opcional)', obrigatorio: false),
+      const SizedBox(height: 16),
+      const _ParamLabel(label: 'Lavanderia', obrigatorio: false),
       const SizedBox(height: 8),
-      _OptionSelector<String>(
-        options: const [
-          ('Leve', 'leve'),
-          ('Médio', 'medio'),
-          ('Pesado', 'pesado'),
-        ],
-        selected: nivel,
-        onSelect: (v) => _set('nivelSujeira', v),
-      ),
+      _StepperInput(
+          value: lavanderia,
+          min: 0,
+          max: 2,
+          onChanged: (v) => setComodo('qtd_lavanderia', v)),
+      const SizedBox(height: 16),
+      const _ParamLabel(label: 'Garagem', obrigatorio: false),
+      const SizedBox(height: 8),
+      _StepperInput(
+          value: garagem,
+          min: 0,
+          max: 4,
+          onChanged: (v) => setComodo('qtd_garagem', v)),
+      const SizedBox(height: 16),
+      const _ParamLabel(
+          label: 'Área Gourmet / Churrasqueira', obrigatorio: false),
+      const SizedBox(height: 8),
+      _StepperInput(
+          value: gourmet,
+          min: 0,
+          max: 2,
+          onChanged: (v) => setComodo('qtd_gourmet', v)),
+      const SizedBox(height: 16),
+      const _ParamLabel(label: 'Escritório', obrigatorio: false),
+      const SizedBox(height: 8),
+      _StepperInput(
+          value: escritorio,
+          min: 0,
+          max: 5,
+          onChanged: (v) => setComodo('qtd_escritorio', v)),
       const SizedBox(height: 20),
       const _ParamLabel(label: 'Possui pets?', obrigatorio: false),
       const SizedBox(height: 8),
@@ -720,8 +752,7 @@ class _ParamLabel extends StatelessWidget {
                   color: AppTheme.errorColor, fontWeight: FontWeight.w600)),
         if (!obrigatorio)
           const Text('  (opcional)',
-              style:
-                  TextStyle(color: AppTheme.colorSubtext, fontSize: 12)),
+              style: TextStyle(color: AppTheme.colorSubtext, fontSize: 12)),
       ],
     );
   }
@@ -882,8 +913,8 @@ class _InfoRow extends StatelessWidget {
           const Icon(Icons.circle, size: 6, color: AppTheme.colorSubtext),
           const SizedBox(width: 8),
           Text(texto,
-              style: const TextStyle(
-                  fontSize: 13, color: AppTheme.colorSubtext)),
+              style:
+                  const TextStyle(fontSize: 13, color: AppTheme.colorSubtext)),
         ],
       ),
     );
@@ -892,10 +923,69 @@ class _InfoRow extends StatelessWidget {
 
 // ─── Etapa 3: Endereco ────────────────────────────────────────────────────────
 
-class _EtapaEndereco extends StatelessWidget {
+class _EtapaEndereco extends StatefulWidget {
   final TextEditingController controller;
 
   const _EtapaEndereco({required this.controller});
+
+  @override
+  State<_EtapaEndereco> createState() => _EtapaEnderecoState();
+}
+
+class _EtapaEnderecoState extends State<_EtapaEndereco> {
+  final _enderecoService = EnderecoService();
+  List<EnderecoCliente> _enderecos = [];
+  bool _carregando = true;
+  String? _idSelecionado;
+  bool _digitarManualmente = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarEnderecos();
+  }
+
+  Future<void> _carregarEnderecos() async {
+    final userId = context.read<AuthService>().currentUserId;
+    if (userId == null) {
+      setState(() => _carregando = false);
+      return;
+    }
+    try {
+      final lista = await _enderecoService.getEnderecos(userId);
+      if (!mounted) return;
+      setState(() {
+        _enderecos = lista;
+        _carregando = false;
+        // Pré-seleciona o endereço principal (se já não foi preenchido)
+        if (widget.controller.text.isEmpty) {
+          final principal = lista.where((e) => e.principal).firstOrNull;
+          if (principal != null) {
+            _idSelecionado = principal.id;
+            widget.controller.text = principal.enderecoCompleto;
+          }
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _carregando = false);
+    }
+  }
+
+  void _selecionarEndereco(EnderecoCliente e) {
+    setState(() {
+      _idSelecionado = e.id;
+      _digitarManualmente = false;
+    });
+    widget.controller.text = e.enderecoCompleto;
+  }
+
+  void _ativarDigitacaoManual() {
+    setState(() {
+      _idSelecionado = null;
+      _digitarManualmente = true;
+      widget.controller.clear();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -904,28 +994,181 @@ class _EtapaEndereco extends StatelessWidget {
       children: [
         const SizedBox(height: 8),
         const Text(
-          'Qual o endereco?',
+          'Qual o endereço?',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
         const Text(
-          'Informe onde o servico sera realizado',
+          'Selecione um endereço salvo ou digite um novo',
           style: TextStyle(color: AppTheme.colorSubtext, fontSize: 15),
         ),
         const SizedBox(height: 24),
-        TextField(
-          controller: controller,
-          maxLines: 3,
-          decoration: InputDecoration(
-            hintText: 'Ex: Rua das Flores, 123, Bairro, Cidade',
-            prefixIcon: const Icon(Icons.location_on_outlined),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+        if (_carregando)
+          const Center(child: CircularProgressIndicator())
+        else ...[
+          // ── Endereços salvos ──────────────────────────────────────────
+          if (_enderecos.isNotEmpty) ...[
+            const Text(
+              'Endereços salvos',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             ),
-            filled: true,
-            fillColor: AppTheme.colorSurface,
+            const SizedBox(height: 12),
+            ..._enderecos.map((e) {
+              final selecionado = _idSelecionado == e.id;
+              return GestureDetector(
+                onTap: () => _selecionarEndereco(e),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: selecionado
+                        ? AppTheme.primaryColor.withAlpha(18)
+                        : AppTheme.colorSurface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: selecionado
+                          ? AppTheme.primaryColor
+                          : AppTheme.colorBorder,
+                      width: selecionado ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        e.principal
+                            ? Icons.home_rounded
+                            : Icons.location_on_outlined,
+                        color: selecionado
+                            ? AppTheme.primaryColor
+                            : AppTheme.colorSubtext,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  e.apelido,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                    color: selecionado
+                                        ? AppTheme.primaryColor
+                                        : AppTheme.colorText,
+                                  ),
+                                ),
+                                if (e.principal) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          AppTheme.primaryColor.withAlpha(20),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      'Principal',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: AppTheme.primaryColor,
+                                          fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${e.logradouro}, ${e.numero} — ${e.bairro}, ${e.cidade}',
+                              style: const TextStyle(
+                                  color: AppTheme.colorSubtext, fontSize: 13),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (selecionado)
+                        Icon(Icons.check_circle_rounded,
+                            color: AppTheme.primaryColor, size: 20),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+
+          // ── Opção de digitar manualmente ──────────────────────────────
+          GestureDetector(
+            onTap: _ativarDigitacaoManual,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _digitarManualmente
+                    ? AppTheme.accentBlue.withAlpha(14)
+                    : AppTheme.colorSurface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _digitarManualmente
+                      ? AppTheme.accentBlue
+                      : AppTheme.colorBorder,
+                  width: _digitarManualmente ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.edit_location_alt_outlined,
+                    color: _digitarManualmente
+                        ? AppTheme.accentBlue
+                        : AppTheme.colorSubtext,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Digitar endereço manualmente',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      color: _digitarManualmente
+                          ? AppTheme.accentBlue
+                          : AppTheme.colorText,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_digitarManualmente)
+                    Icon(Icons.check_circle_rounded,
+                        color: AppTheme.accentBlue, size: 20),
+                ],
+              ),
+            ),
           ),
-        ),
+
+          if (_digitarManualmente) ...[
+            const SizedBox(height: 14),
+            TextField(
+              controller: widget.controller,
+              maxLines: 3,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Ex: Rua das Flores, 123, Bairro, Cidade',
+                prefixIcon: const Icon(Icons.location_on_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                filled: true,
+                fillColor: AppTheme.colorSurface,
+              ),
+            ),
+          ],
+        ],
         const SizedBox(height: 24),
       ],
     );
@@ -1142,8 +1385,8 @@ class _EtapaDataHoraState extends State<_EtapaDataHora> {
               const SizedBox(height: 4),
               Text(
                 'Duração estimada: ${DuracaoServico.formatar(widget.duracaoMinutos!)}',
-                style: const TextStyle(
-                    color: AppTheme.colorSubtext, fontSize: 13),
+                style:
+                    const TextStyle(color: AppTheme.colorSubtext, fontSize: 13),
               ),
             ],
             const SizedBox(height: 12),
@@ -1183,9 +1426,7 @@ class _EtapaDataHoraState extends State<_EtapaDataHora> {
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
-                        color: selecionado
-                            ? Colors.white
-                            : AppTheme.colorText,
+                        color: selecionado ? Colors.white : AppTheme.colorText,
                       ),
                     ),
                   ),
@@ -1199,13 +1440,11 @@ class _EtapaDataHoraState extends State<_EtapaDataHora> {
         if (widget.dataHora != null) ...[
           const SizedBox(height: 16),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: AppTheme.successColor.withOpacity(0.08),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: AppTheme.successColor.withOpacity(0.3)),
+              border: Border.all(color: AppTheme.successColor.withOpacity(0.3)),
             ),
             child: Row(
               children: [
@@ -1292,8 +1531,7 @@ class _EtapaDescricao extends StatelessWidget {
                 const Divider(height: 12),
                 _ResumoLinha(
                   icon: Icons.attach_money,
-                  texto:
-                      'Estimativa: R\$ ${precoEstimado!.toStringAsFixed(2)}',
+                  texto: 'Estimativa: R\$ ${precoEstimado!.toStringAsFixed(2)}',
                   cor: AppTheme.successColor,
                 ),
               ],

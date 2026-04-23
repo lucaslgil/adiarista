@@ -83,11 +83,6 @@ class ServicoValidators {
     if (comodos == null || comodos < 1) {
       return 'Informe a quantidade de cômodos';
     }
-    final nivel = p['nivelSujeira'] as String?;
-    const niveisValidos = ['leve', 'medio', 'pesado'];
-    if (nivel == null || !niveisValidos.contains(nivel)) {
-      return 'Selecione o nível de sujeira';
-    }
     return null;
   }
 
@@ -134,7 +129,7 @@ class ServicoRegistry {
       label: 'Limpeza Residencial',
       icon: Icons.home_outlined,
       unidade: UnidadeCobranca.porServico,
-      parametrosObrigatorios: ['quantidadeComodos', 'nivelSujeira'],
+      parametrosObrigatorios: ['quantidadeComodos'],
       parametrosOpcionais: ['possuiPets'],
     ),
     TipoServico.limpezaComercial: ServicoConfig(

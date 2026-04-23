@@ -64,6 +64,10 @@ class _ConfigurarPrecosScreenState extends State<ConfigurarPrecosScreen> {
       'preco_banheiro': TextEditingController(),
       'preco_sala': TextEditingController(),
       'preco_cozinha': TextEditingController(),
+      'preco_lavanderia': TextEditingController(),
+      'preco_garagem': TextEditingController(),
+      'preco_gourmet': TextEditingController(),
+      'preco_escritorio': TextEditingController(),
       'taxa_pet': TextEditingController(),
       'valor_minimo': TextEditingController(),
     };
@@ -148,7 +152,8 @@ class _ConfigurarPrecosScreenState extends State<ConfigurarPrecosScreen> {
         final ctrls = _controllers[preco.tipoServico]!;
         final cfg = preco.configuracao;
 
-        _preencherControladores(preco.tipoServico, ctrls, cfg, preco.valorMinimo);
+        _preencherControladores(
+            preco.tipoServico, ctrls, cfg, preco.valorMinimo);
 
         if (preco.tipoServico == TipoServico.passarRoupas) {
           _modoPassarRoupas = cfg['modo'] as String? ?? 'por_peca';
@@ -179,6 +184,10 @@ class _ConfigurarPrecosScreenState extends State<ConfigurarPrecosScreen> {
         set('preco_banheiro');
         set('preco_sala');
         set('preco_cozinha');
+        set('preco_lavanderia');
+        set('preco_garagem');
+        set('preco_gourmet');
+        set('preco_escritorio');
         set('taxa_pet');
       case TipoServico.limpezaComercial:
         set('preco_por_m2');
@@ -212,6 +221,16 @@ class _ConfigurarPrecosScreenState extends State<ConfigurarPrecosScreen> {
           if (parse('preco_sala') != null) 'preco_sala': parse('preco_sala'),
           if (parse('preco_cozinha') != null)
             'preco_cozinha': parse('preco_cozinha'),
+          if (parse('preco_lavanderia') != null &&
+              parse('preco_lavanderia')! > 0)
+            'preco_lavanderia': parse('preco_lavanderia'),
+          if (parse('preco_garagem') != null && parse('preco_garagem')! > 0)
+            'preco_garagem': parse('preco_garagem'),
+          if (parse('preco_gourmet') != null && parse('preco_gourmet')! > 0)
+            'preco_gourmet': parse('preco_gourmet'),
+          if (parse('preco_escritorio') != null &&
+              parse('preco_escritorio')! > 0)
+            'preco_escritorio': parse('preco_escritorio'),
           if (parse('taxa_pet') != null && parse('taxa_pet')! > 0)
             'taxa_pet': parse('taxa_pet'),
         },
@@ -272,9 +291,9 @@ class _ConfigurarPrecosScreenState extends State<ConfigurarPrecosScreen> {
         // Salvar preços somente se o serviço está ativo
         if (ativo) {
           final config = _buildConfig(tipo);
-          final vMinText = _controllers[tipo]!['valor_minimo']?.text
-                  .replaceAll(',', '.') ??
-              '';
+          final vMinText =
+              _controllers[tipo]!['valor_minimo']?.text.replaceAll(',', '.') ??
+                  '';
           final valorMinimo = double.tryParse(vMinText) ?? 0.0;
 
           await precosService.salvarPrecos(
@@ -314,9 +333,9 @@ class _ConfigurarPrecosScreenState extends State<ConfigurarPrecosScreen> {
     for (final tipo in TipoServico.values) {
       if (_servicosAtivos[tipo] == true) {
         final config = _buildConfig(tipo);
-        final vMinText = _controllers[tipo]!['valor_minimo']?.text
-                .replaceAll(',', '.') ??
-            '';
+        final vMinText =
+            _controllers[tipo]!['valor_minimo']?.text.replaceAll(',', '.') ??
+                '';
         final valorMinimo = double.tryParse(vMinText) ?? 0.0;
         if (valorMinimo > 0 &&
             CalculadoraPrecos.validarConfiguracao(tipo, config)) {
@@ -353,8 +372,7 @@ class _ConfigurarPrecosScreenState extends State<ConfigurarPrecosScreen> {
                         horaInicio: _horaInicio,
                         horaFim: _horaFim,
                         diasTrabalho: _diasTrabalho,
-                        onAlterarInicio: (t) =>
-                            setState(() => _horaInicio = t),
+                        onAlterarInicio: (t) => setState(() => _horaInicio = t),
                         onAlterarFim: (t) => setState(() => _horaFim = t),
                         onAlterarDias: (dias) =>
                             setState(() => _diasTrabalho = dias),
@@ -497,7 +515,9 @@ class _ServicoCard extends StatelessWidget {
         color: AppTheme.colorSurface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: ativo ? AppTheme.primaryColor.withAlpha(80) : AppTheme.colorBorder,
+          color: ativo
+              ? AppTheme.primaryColor.withAlpha(80)
+              : AppTheme.colorBorder,
         ),
       ),
       child: Column(
@@ -591,7 +611,9 @@ class _FormResidencial extends StatelessWidget {
           children: [
             Expanded(
                 child: _PrecoField(
-                    ctrl: ctrls['preco_quarto']!, label: 'Quarto', obrig: true)),
+                    ctrl: ctrls['preco_quarto']!,
+                    label: 'Quarto',
+                    obrig: true)),
             const SizedBox(width: 8),
             Expanded(
                 child: _PrecoField(
@@ -615,6 +637,40 @@ class _FormResidencial extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 16),
+        const _SectionLabel('Ambientes adicionais (opcional)'),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+                child: _PrecoField(
+                    ctrl: ctrls['preco_lavanderia']!,
+                    label: 'Lavanderia',
+                    obrig: false)),
+            const SizedBox(width: 8),
+            Expanded(
+                child: _PrecoField(
+                    ctrl: ctrls['preco_garagem']!,
+                    label: 'Garagem',
+                    obrig: false)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+                child: _PrecoField(
+                    ctrl: ctrls['preco_gourmet']!,
+                    label: 'Área Gourmet',
+                    obrig: false)),
+            const SizedBox(width: 8),
+            Expanded(
+                child: _PrecoField(
+                    ctrl: ctrls['preco_escritorio']!,
+                    label: 'Escritório',
+                    obrig: false)),
+          ],
+        ),
+        const SizedBox(height: 16),
         const _SectionLabel('Extras'),
         const SizedBox(height: 8),
         _PrecoField(
@@ -623,8 +679,6 @@ class _FormResidencial extends StatelessWidget {
             obrig: false),
         const SizedBox(height: 16),
         _ValorMinimoField(ctrl: ctrls['valor_minimo']!),
-        const SizedBox(height: 8),
-        _MultiplInfoBox(),
       ],
     );
   }
@@ -645,8 +699,6 @@ class _FormComercial extends StatelessWidget {
             obrig: true),
         const SizedBox(height: 12),
         _ValorMinimoField(ctrl: ctrls['valor_minimo']!),
-        const SizedBox(height: 8),
-        _MultiplInfoBox(),
       ],
     );
   }
@@ -863,8 +915,7 @@ class _ValorMinimoField extends StatelessWidget {
         const SizedBox(height: 6),
         TextFormField(
           controller: ctrl,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: InputDecoration(
             prefixText: 'R\$ ',
             hintText: '0,00',
@@ -910,8 +961,7 @@ class _ModoChip extends StatelessWidget {
           color: selecionado ? AppTheme.primaryColor : AppTheme.colorBackground,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color:
-                selecionado ? AppTheme.primaryColor : AppTheme.colorBorder,
+            color: selecionado ? AppTheme.primaryColor : AppTheme.colorBorder,
           ),
         ),
         child: Text(
@@ -922,36 +972,6 @@ class _ModoChip extends StatelessWidget {
             fontSize: 13,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _MultiplInfoBox extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: AppTheme.colorBorder.withAlpha(80),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Multiplicadores de sujeira (aplicados automaticamente)',
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.colorSubtext),
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Leve ×1,0  •  Médio ×1,2  •  Pesado ×1,5',
-            style: TextStyle(fontSize: 11, color: AppTheme.colorSubtext),
-          ),
-        ],
       ),
     );
   }
@@ -1063,8 +1083,7 @@ class _JornadaCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             'Jornada total: $duracaoStr',
-            style: const TextStyle(
-                color: AppTheme.colorSubtext, fontSize: 12),
+            style: const TextStyle(color: AppTheme.colorSubtext, fontSize: 12),
           ),
           const SizedBox(height: 14),
           const Text(
@@ -1099,9 +1118,8 @@ class _JornadaCard extends StatelessWidget {
                         : AppTheme.colorBackground,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: ativo
-                          ? AppTheme.primaryColor
-                          : AppTheme.colorBorder,
+                      color:
+                          ativo ? AppTheme.primaryColor : AppTheme.colorBorder,
                       width: 1.5,
                     ),
                   ),

@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/diarista_perfil.dart';
+import '../../models/endereco_cliente.dart';
 import '../../services/user_service.dart';
 
 class BuscarDiaristasScreen extends StatefulWidget {
-  const BuscarDiaristasScreen({Key? key}) : super(key: key);
+  final String? tipoInicial;
+  final DateTime? dataInicial;
+  final EnderecoCliente? enderecoInicial;
+
+  const BuscarDiaristasScreen({
+    Key? key,
+    this.tipoInicial,
+    this.dataInicial,
+    this.enderecoInicial,
+  }) : super(key: key);
 
   @override
   State<BuscarDiaristasScreen> createState() => _BuscarDiaristasScreenState();
@@ -18,6 +29,7 @@ class _BuscarDiaristasScreenState extends State<BuscarDiaristasScreen> {
   List<DiaristaPerfil> _filtradas = [];
   bool _isLoading = true;
   String? _tipoFiltro;
+  DateTime? _dataFiltro;
   double _avaliacaoMin = 0;
   double _precoMax = 1000;
 
@@ -33,6 +45,8 @@ class _BuscarDiaristasScreenState extends State<BuscarDiaristasScreen> {
   @override
   void initState() {
     super.initState();
+    _tipoFiltro = widget.tipoInicial;
+    _dataFiltro = widget.dataInicial;
     _carregarDiaristas();
     _searchController.addListener(_filtrar);
   }
@@ -47,7 +61,9 @@ class _BuscarDiaristasScreenState extends State<BuscarDiaristasScreen> {
     setState(() => _isLoading = true);
     try {
       final userService = context.read<UserService>();
-      final lista = await userService.getDiaristasDisponiveis();
+      final lista = await userService.getDiaristasDisponiveis(
+        enderecoServico: widget.enderecoInicial,
+      );
       if (mounted) {
         setState(() {
           _diaristas = lista;
@@ -153,33 +169,59 @@ class _BuscarDiaristasScreenState extends State<BuscarDiaristasScreen> {
             ),
           ),
 
-          // Chips de tipo rapido
+          // Chips de tipo rapido + chip de data (se filtro ativo)
           SizedBox(
             height: 44,
-            child: ListView.separated(
+            child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemCount: _tipos.length,
-              itemBuilder: (_, i) {
-                final t = _tipos[i];
-                final selecionado = _tipoFiltro == t;
-                return FilterChip(
-                  label: Text(t),
-                  selected: selecionado,
-                  onSelected: (_) {
-                    setState(() => _tipoFiltro = selecionado ? null : t);
-                    _filtrar();
-                  },
-                  selectedColor: AppTheme.primaryColor,
-                  checkmarkColor: Colors.white,
-                  labelStyle: TextStyle(
-                    color: selecionado ? Colors.white : AppTheme.colorText,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 13,
+              children: [
+                // Chip de data
+                if (_dataFiltro != null) ...[
+                  FilterChip(
+                    label: Text(
+                        '📅 ${DateFormat("d/M", "pt_BR").format(_dataFiltro!)}'),
+                    selected: true,
+                    onSelected: (_) => setState(() {
+                      _dataFiltro = null;
+                      _filtrar();
+                    }),
+                    selectedColor: AppTheme.accentBlue.withAlpha(40),
+                    deleteIcon: const Icon(Icons.close, size: 14),
+                    onDeleted: () => setState(() {
+                      _dataFiltro = null;
+                      _filtrar();
+                    }),
+                    labelStyle: const TextStyle(
+                        color: AppTheme.accentBlue,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13),
                   ),
-                );
-              },
+                  const SizedBox(width: 8),
+                ],
+                // Chips de tipo
+                ..._tipos.map((t) {
+                  final selecionado = _tipoFiltro == t;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(t),
+                      selected: selecionado,
+                      onSelected: (_) {
+                        setState(() => _tipoFiltro = selecionado ? null : t);
+                        _filtrar();
+                      },
+                      selectedColor: AppTheme.primaryColor,
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(
+                          color:
+                              selecionado ? Colors.white : AppTheme.colorText,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13),
+                    ),
+                  );
+                }),
+              ],
             ),
           ),
 
@@ -225,8 +267,10 @@ class _BuscarDiaristasScreenState extends State<BuscarDiaristasScreen> {
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 12),
                           itemCount: _filtradas.length,
-                          itemBuilder: (context, i) =>
-                              _DiaristaCard(diarista: _filtradas[i]),
+                          itemBuilder: (context, i) => _DiaristaCard(
+                            diarista: _filtradas[i],
+                            dataFiltro: _dataFiltro,
+                          ),
                         ),
                       ),
           ),
@@ -240,18 +284,16 @@ class _BuscarDiaristasScreenState extends State<BuscarDiaristasScreen> {
 
 class _DiaristaCard extends StatelessWidget {
   final DiaristaPerfil diarista;
+  final DateTime? dataFiltro;
 
-  const _DiaristaCard({required this.diarista});
+  const _DiaristaCard({required this.diarista, this.dataFiltro});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => context.push(
-        '/agenda-cliente',
-        extra: {
-          'diaristaId': diarista.userId,
-          'diaristaNome': diarista.regiao,
-        },
+        '/perfil-diarista',
+        extra: {'diaristaId': diarista.userId},
       ),
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -283,7 +325,9 @@ class _DiaristaCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          diarista.regiao,
+                          diarista.nome.isNotEmpty
+                              ? diarista.nome
+                              : diarista.regiao,
                           style: const TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 15),
                         ),

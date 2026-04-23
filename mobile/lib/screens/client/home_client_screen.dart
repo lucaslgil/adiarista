@@ -3,10 +3,13 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
+import '../../models/endereco_cliente.dart';
 import '../../models/servico.dart';
 import '../../models/solicitacao.dart';
 import '../../services/auth_service.dart';
+import '../../services/endereco_service.dart';
 import '../../services/user_service.dart';
+import 'meus_enderecos_screen.dart';
 
 class HomeClientScreen extends StatefulWidget {
   const HomeClientScreen({Key? key}) : super(key: key);
@@ -24,11 +27,27 @@ class _HomeClientScreenState extends State<HomeClientScreen> {
   // Servicos rapidos oferecidos
   static const _servicos = [
     {'icon': Icons.home_outlined, 'label': 'Casa', 'tipo': 'casa'},
-    {'icon': Icons.apartment_outlined, 'label': 'Apartamento', 'tipo': 'apartamento'},
-    {'icon': Icons.business_outlined, 'label': 'Comercial', 'tipo': 'comercial'},
-    {'icon': Icons.cleaning_services_outlined, 'label': 'Faxina', 'tipo': 'faxina'},
+    {
+      'icon': Icons.apartment_outlined,
+      'label': 'Apartamento',
+      'tipo': 'apartamento'
+    },
+    {
+      'icon': Icons.business_outlined,
+      'label': 'Comercial',
+      'tipo': 'comercial'
+    },
+    {
+      'icon': Icons.cleaning_services_outlined,
+      'label': 'Faxina',
+      'tipo': 'faxina'
+    },
     {'icon': Icons.window_outlined, 'label': 'Vidros', 'tipo': 'vidros'},
-    {'icon': Icons.local_laundry_service_outlined, 'label': 'Lavanderia', 'tipo': 'lavanderia'},
+    {
+      'icon': Icons.local_laundry_service_outlined,
+      'label': 'Lavanderia',
+      'tipo': 'lavanderia'
+    },
   ];
 
   @override
@@ -75,12 +94,16 @@ class _HomeClientScreenState extends State<HomeClientScreen> {
             nomeUsuario: _nomeUsuario,
             servicos: _servicos,
             solicitacoesAtivas: _solicitacoes
-                .where((s) => s.status == 'pendente' || s.status == 'aceita' || s.status == 'em_andamento')
+                .where((s) =>
+                    s.status == 'pendente' ||
+                    s.status == 'aceita' ||
+                    s.status == 'em_andamento')
                 .toList(),
             isLoading: _isLoading,
             onRefresh: _loadData,
           ),
           _HistoricoTab(solicitacoes: _solicitacoes),
+          const MeusEnderecosScreen(),
           _PerfilTab(nome: _nomeUsuario, onLogout: _handleLogout),
         ],
       ),
@@ -97,6 +120,11 @@ class _HomeClientScreenState extends State<HomeClientScreen> {
             icon: Icon(Icons.receipt_long_outlined),
             selectedIcon: Icon(Icons.receipt_long),
             label: 'Atividade',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.location_on_outlined),
+            selectedIcon: Icon(Icons.location_on),
+            label: 'Endereços',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
@@ -129,7 +157,11 @@ class _HomeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hora = DateTime.now().hour;
-    final saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+    final saudacao = hora < 12
+        ? 'Bom dia'
+        : hora < 18
+            ? 'Boa tarde'
+            : 'Boa noite';
 
     return RefreshIndicator(
       onRefresh: () async => onRefresh(),
@@ -240,9 +272,9 @@ class _HomeTab extends StatelessWidget {
                   return _ServicoRapidoItem(
                     icon: s['icon'] as IconData,
                     label: s['label'] as String,
-                    onTap: () => context.push(
-                      '/nova-solicitacao',
-                      extra: {'tipo': s['tipo']},
+                    onTap: () => _abrirFiltroRapido(
+                      context,
+                      tipoInicial: s['tipo'] as String,
                     ),
                   );
                 },
@@ -250,19 +282,34 @@ class _HomeTab extends StatelessWidget {
             ),
           ),
 
-          // Botao principal
+          // Botoes de acao
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: ElevatedButton.icon(
-                onPressed: () => context.push('/buscar-diaristas'),
-                icon: const Icon(Icons.search),
-                label: const Text('Encontrar Diaristas'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 56),
-                  textStyle: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w600),
-                ),
+              child: Column(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _abrirFiltroRapido(context),
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Busca rapida por data'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 56),
+                      textStyle: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => context.push('/buscar-diaristas'),
+                    icon: const Icon(Icons.people_outline),
+                    label: const Text('Ver todas as profissionais'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                      textStyle: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -322,6 +369,314 @@ class _HomeTab extends StatelessWidget {
   }
 }
 
+// ─── Helper: abre o filtro rápido (busca por data/serviço) ───────────────────
+
+void _abrirFiltroRapido(BuildContext context, {String? tipoInicial}) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _FiltroRapidoSheet(tipoInicial: tipoInicial),
+  );
+}
+
+// ─── Sheet de filtro rápido ───────────────────────────────────────────────────
+
+class _FiltroRapidoSheet extends StatefulWidget {
+  final String? tipoInicial;
+  const _FiltroRapidoSheet({this.tipoInicial});
+
+  @override
+  State<_FiltroRapidoSheet> createState() => _FiltroRapidoSheetState();
+}
+
+class _FiltroRapidoSheetState extends State<_FiltroRapidoSheet> {
+  DateTime? _dataSelecionada;
+  EnderecoCliente? _enderecoSelecionado;
+  List<EnderecoCliente> _enderecos = [];
+  bool _loadingEnderecos = true;
+  String? _tipoSelecionado;
+
+  static const _tipos = [
+    {'label': 'Qualquer', 'value': null},
+    {'label': 'Casa', 'value': 'casa'},
+    {'label': 'Apartamento', 'value': 'apartamento'},
+    {'label': 'Faxina', 'value': 'faxina'},
+    {'label': 'Comercial', 'value': 'comercial'},
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _tipoSelecionado = widget.tipoInicial;
+    _carregarEnderecos();
+  }
+
+  Future<void> _carregarEnderecos() async {
+    try {
+      final authService = context.read<AuthService>();
+      final enderecoService = context.read<EnderecoService>();
+      final userId = authService.currentUserId;
+      if (userId != null) {
+        final lista = await enderecoService.getEnderecos(userId);
+        if (mounted) {
+          setState(() {
+            _enderecos = lista;
+            _enderecoSelecionado =
+                lista.where((e) => e.principal).firstOrNull ??
+                    lista.firstOrNull;
+          });
+        }
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loadingEnderecos = false);
+    }
+  }
+
+  Future<void> _selecionarData() async {
+    final hoje = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dataSelecionada ?? hoje.add(const Duration(days: 1)),
+      firstDate: hoje,
+      lastDate: hoje.add(const Duration(days: 90)),
+    );
+    if (picked != null) setState(() => _dataSelecionada = picked);
+  }
+
+  void _buscar() {
+    Navigator.pop(context);
+    context.push('/buscar-diaristas', extra: {
+      if (_tipoSelecionado != null) 'tipo': _tipoSelecionado,
+      if (_dataSelecionada != null) 'data': _dataSelecionada!.toIso8601String(),
+      if (_enderecoSelecionado != null) 'endereco': _enderecoSelecionado,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fmtData = _dataSelecionada != null
+        ? DateFormat("EEE, d 'de' MMM", 'pt_BR').format(_dataSelecionada!)
+        : null;
+
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppTheme.colorBackground,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+            20, 20, 20, MediaQuery.of(context).padding.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: AppTheme.colorBorder,
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            const Text('Busca Rapida',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            const Text('Escolha a data e veja quem esta disponivel',
+                style: TextStyle(fontSize: 14, color: AppTheme.colorSubtext)),
+            const SizedBox(height: 24),
+
+            // Tipo de servico
+            const Text('Tipo de servico',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.colorSubtext)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _tipos.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final t = _tipos[i];
+                  final selected = _tipoSelecionado == t['value'];
+                  return GestureDetector(
+                    onTap: () => setState(
+                        () => _tipoSelecionado = t['value'] as String?),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppTheme.primaryColor
+                            : AppTheme.colorSurface,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                            color: selected
+                                ? AppTheme.primaryColor
+                                : AppTheme.colorBorder),
+                      ),
+                      child: Center(
+                        child: Text(
+                          t['label'] as String,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: selected ? Colors.white : AppTheme.colorText,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Data
+            const Text('Quando?',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.colorSubtext)),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: _selecionarData,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: _dataSelecionada != null
+                      ? AppTheme.accentBlue.withAlpha(12)
+                      : AppTheme.colorSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _dataSelecionada != null
+                        ? AppTheme.accentBlue
+                        : AppTheme.colorBorder,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.calendar_today_outlined,
+                        color: _dataSelecionada != null
+                            ? AppTheme.accentBlue
+                            : AppTheme.colorSubtext,
+                        size: 20),
+                    const SizedBox(width: 12),
+                    Text(
+                      fmtData ?? 'Selecionar data',
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: _dataSelecionada != null
+                            ? AppTheme.accentBlue
+                            : AppTheme.colorSubtext,
+                        fontWeight: _dataSelecionada != null
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Icon(Icons.chevron_right,
+                        color: AppTheme.colorSubtext, size: 20),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Endereço
+            const Text('Endereco',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.colorSubtext)),
+            const SizedBox(height: 8),
+            if (_loadingEnderecos)
+              const Center(
+                  child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2)))
+            else if (_enderecos.isEmpty)
+              GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                  context.push('/buscar-diaristas');
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppTheme.colorSurface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.colorBorder),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.add_location_alt_outlined,
+                          color: AppTheme.colorSubtext, size: 20),
+                      SizedBox(width: 10),
+                      Text('Nenhum endereco salvo — continuar sem filtro',
+                          style: TextStyle(
+                              fontSize: 14, color: AppTheme.colorSubtext)),
+                    ],
+                  ),
+                ),
+              )
+            else
+              DropdownButtonFormField<EnderecoCliente>(
+                value: _enderecoSelecionado,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.location_on_outlined, size: 20),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: AppTheme.colorBorder)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: AppTheme.colorBorder)),
+                ),
+                items: _enderecos
+                    .map((e) => DropdownMenuItem(
+                          value: e,
+                          child: Text('${e.apelido} — ${e.logradouro}',
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 14)),
+                        ))
+                    .toList(),
+                onChanged: (e) => setState(() => _enderecoSelecionado = e),
+              ),
+
+            const SizedBox(height: 24),
+
+            ElevatedButton(
+              onPressed: _buscar,
+              style: ElevatedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 54)),
+              child: const Text('Ver profissionais disponiveis',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Servico rapido item ──────────────────────────────────────────────────────
+
 class _ServicoRapidoItem extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -352,7 +707,8 @@ class _ServicoRapidoItem extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -393,7 +749,8 @@ class _SolicitacaoCard extends StatelessWidget {
               children: [
                 Text(
                   ServicoRegistry.labelFor(solicitacao.tipoLimpeza),
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 15),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -602,8 +959,8 @@ class _PerfilTab extends StatelessWidget {
                         fontSize: 20, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
                 const Text('Cliente',
-                    style: TextStyle(
-                        color: AppTheme.colorSubtext, fontSize: 14)),
+                    style:
+                        TextStyle(color: AppTheme.colorSubtext, fontSize: 14)),
                 const SizedBox(height: 32),
                 _MenuTile(
                   icon: Icons.person_outline,
@@ -658,13 +1015,10 @@ class _MenuTile extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: Icon(icon, color: color),
           title: Text(label,
-              style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w500)),
+              style: TextStyle(color: color, fontWeight: FontWeight.w500)),
           trailing: isDestructive
               ? null
-              : const Icon(Icons.chevron_right,
-                  color: AppTheme.colorSubtext),
+              : const Icon(Icons.chevron_right, color: AppTheme.colorSubtext),
           onTap: onTap,
         ),
         const Divider(height: 1),
@@ -672,4 +1026,3 @@ class _MenuTile extends StatelessWidget {
     );
   }
 }
-

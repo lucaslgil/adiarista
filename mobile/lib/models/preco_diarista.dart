@@ -95,7 +95,8 @@ class PrecoDiarista {
       };
 
   /// Verifica se todos os campos obrigatórios estão preenchidos.
-  bool get isCompleto => CalculadoraPrecos.validarConfiguracao(tipoServico, configuracao);
+  bool get isCompleto =>
+      CalculadoraPrecos.validarConfiguracao(tipoServico, configuracao);
 }
 
 // ─── Calculadora de Preços ────────────────────────────────────────────────────
@@ -105,13 +106,6 @@ class PrecoDiarista {
 /// Não tem estado próprio — todos os métodos são estáticos.
 class CalculadoraPrecos {
   CalculadoraPrecos._();
-
-  // Multiplicadores de sujeira (fixos no sistema)
-  static const Map<String, double> _multiplicadoresSujeira = {
-    'leve': 1.0,
-    'medio': 1.2,
-    'pesado': 1.5,
-  };
 
   /// Calcula a estimativa de preço com base nos parâmetros do cliente
   /// e na configuração de preços da diarista.
@@ -149,8 +143,7 @@ class CalculadoraPrecos {
   }
 
   // ── Limpeza Residencial ────────────────────────────────────────────────────
-  // Fórmula: (quartos*p_quarto + banheiros*p_ban + salas*p_sala + coz*p_coz)
-  //           * multiplicador_sujeira + taxa_pet (se pets)
+  // Fórmula: soma dos cômodos por preço unitário + taxa_pet (se pets)
   static double? _calcResidencial(
     Map<String, dynamic> params,
     Map<String, dynamic> config,
@@ -169,15 +162,26 @@ class CalculadoraPrecos {
     final qtdBanheiros = (params['qtd_banheiros'] as int?) ?? 1;
     final qtdSalas = (params['qtd_salas'] as int?) ?? 1;
     final qtdCozinhas = (params['qtd_cozinhas'] as int?) ?? 1;
+    final qtdLavanderia = (params['qtd_lavanderia'] as int?) ?? 0;
+    final qtdGaragem = (params['qtd_garagem'] as int?) ?? 0;
+    final qtdGourmet = (params['qtd_gourmet'] as int?) ?? 0;
+    final qtdEscritorio = (params['qtd_escritorio'] as int?) ?? 0;
+
+    final precoLavanderia =
+        (config['preco_lavanderia'] as num?)?.toDouble() ?? 0.0;
+    final precoGaragem = (config['preco_garagem'] as num?)?.toDouble() ?? 0.0;
+    final precoGourmet = (config['preco_gourmet'] as num?)?.toDouble() ?? 0.0;
+    final precoEscritorio =
+        (config['preco_escritorio'] as num?)?.toDouble() ?? 0.0;
 
     double total = (qtdQuartos * precoQuarto) +
         (qtdBanheiros * precoBanheiro) +
         (qtdSalas * precoSala) +
-        (qtdCozinhas * precoCozinha);
-
-    // Aplicar multiplicador de sujeira
-    final nivelSujeira = params['nivelSujeira'] as String? ?? 'leve';
-    total *= _multiplicadoresSujeira[nivelSujeira] ?? 1.0;
+        (qtdCozinhas * precoCozinha) +
+        (qtdLavanderia * precoLavanderia) +
+        (qtdGaragem * precoGaragem) +
+        (qtdGourmet * precoGourmet) +
+        (qtdEscritorio * precoEscritorio);
 
     // Taxa pet
     final temPet = params['possuiPets'] as bool? ?? false;
@@ -202,9 +206,6 @@ class CalculadoraPrecos {
     if (metragem == null || metragem <= 0) return null;
 
     double total = metragem * precoPorM2;
-
-    final nivelSujeira = params['nivelSujeira'] as String? ?? 'leve';
-    total *= _multiplicadoresSujeira[nivelSujeira] ?? 1.0;
 
     return total;
   }
@@ -303,11 +304,10 @@ class CalculadoraPrecos {
     double? _v(String key) => (config[key] as num?)?.toDouble();
 
     return switch (tipo) {
-      TipoServico.limpezaResidencial =>
-        _v('preco_quarto') != null &&
-            _v('preco_banheiro') != null &&
-            _v('preco_sala') != null &&
-            _v('preco_cozinha') != null,
+      TipoServico.limpezaResidencial => _v('preco_quarto') != null &&
+          _v('preco_banheiro') != null &&
+          _v('preco_sala') != null &&
+          _v('preco_cozinha') != null,
       TipoServico.limpezaComercial => _v('preco_por_m2') != null,
       TipoServico.lavarRoupas => _v('preco_por_hora') != null,
       TipoServico.passarRoupas => (config['modo'] == 'por_hora'
@@ -325,8 +325,7 @@ class CalculadoraPrecos {
   ) {
     if (validarConfiguracao(tipo, config)) return null;
     return switch (tipo) {
-      TipoServico.limpezaResidencial =>
-        'Preencha todos os preços por cômodo',
+      TipoServico.limpezaResidencial => 'Preencha todos os preços por cômodo',
       TipoServico.limpezaComercial => 'Informe o preço por m²',
       TipoServico.lavarRoupas => 'Informe o preço por hora',
       TipoServico.passarRoupas => 'Informe o preço de cobrança',
@@ -354,8 +353,7 @@ class DuracaoServico {
     TipoServico tipo,
     Map<String, dynamic> params,
   ) {
-    int _i(String key, [int def = 1]) =>
-        (params[key] as num?)?.toInt() ?? def;
+    int _i(String key, [int def = 1]) => (params[key] as num?)?.toInt() ?? def;
 
     switch (tipo) {
       case TipoServico.limpezaResidencial:
@@ -363,10 +361,18 @@ class DuracaoServico {
         final banheiros = _i('qtd_banheiros');
         final salas = _i('qtd_salas');
         final cozinhas = _i('qtd_cozinhas');
+        final lavanderia = _i('qtd_lavanderia', 0);
+        final garagem = _i('qtd_garagem', 0);
+        final gourmet = _i('qtd_gourmet', 0);
+        final escritorio = _i('qtd_escritorio', 0);
         return quartos * _minPorQuarto +
             banheiros * _minPorBanheiro +
             salas * _minPorSala +
-            cozinhas * _minPorCozinha;
+            cozinhas * _minPorCozinha +
+            lavanderia * 30 +
+            garagem * 25 +
+            gourmet * 40 +
+            escritorio * 30;
 
       case TipoServico.limpezaComercial:
         final m2 = _i('metragem', 50);

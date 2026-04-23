@@ -47,7 +47,8 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
   }
 
   Future<void> _carregarRecorrentes(String userId) async {
-    final lista = await _agendaService.getBloqueiosRecorrentes(diaristaId: userId);
+    final lista =
+        await _agendaService.getBloqueiosRecorrentes(diaristaId: userId);
     if (mounted) setState(() => _bloqueiosRecorrentes = lista);
   }
 
@@ -62,7 +63,8 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
       final inicio = DateTime(_mesSelecionado.year, _mesSelecionado.month, 1);
       final fim = DateTime(_mesSelecionado.year, _mesSelecionado.month + 1, 0);
 
-      print('🔄 [DEBUG] Carregando disponibilidades de ${_chave(inicio)} até ${_chave(fim)}');
+      print(
+          '🔄 [DEBUG] Carregando disponibilidades de ${_chave(inicio)} até ${_chave(fim)}');
 
       final disp = await _agendaService.getDisponibilidade(
         diaristaId: userId,
@@ -90,7 +92,8 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
         agMap[k]!.add(a);
       }
 
-      print('✔️ [DEBUG] Mapa de disponibilidades preparado com ${dispMap.length} chaves');
+      print(
+          '✔️ [DEBUG] Mapa de disponibilidades preparado com ${dispMap.length} chaves');
 
       if (mounted) {
         setState(() {
@@ -122,9 +125,8 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
     final disp = _disponibilidades[chave];
     final ags = _agendamentos[chave] ?? [];
 
-    final recorrentesAtivos = _bloqueiosRecorrentes
-        .where((r) => r.aplicaNaData(data))
-        .toList();
+    final recorrentesAtivos =
+        _bloqueiosRecorrentes.where((r) => r.aplicaNaData(data)).toList();
 
     final acao = await showModalBottomSheet<_AcaoDia>(
       context: context,
@@ -161,13 +163,13 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
               data: data,
             );
           } else {
-            // dataInicio = hoje → bloqueia todas as ocorrências desse
-            // dia da semana a partir de agora, em qualquer mês
+            // dataInicio = data selecionada → bloqueia apenas as ocorrências
+            // desse dia da semana a partir da data clicada (não retroativo)
             await _agendaService.salvarBloqueioRecorrente(
               diaristaId: userId,
               tipo: TipoRecorrencia.semanal,
               valor: data.weekday % 7, // 0=Dom...6=Sab
-              dataInicio: DateTime.now(),
+              dataInicio: DateTime(data.year, data.month, data.day),
             );
             // Bloqueia também este dia específico
             await _agendaService.salvarDisponibilidade(
@@ -213,7 +215,8 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
         };
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(msgs[acao]!, style: const TextStyle(color: Colors.white)),
+            content:
+                Text(msgs[acao]!, style: const TextStyle(color: Colors.white)),
             backgroundColor: AppTheme.successColor,
             duration: const Duration(seconds: 2),
           ),
@@ -223,7 +226,8 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro: $e', style: const TextStyle(color: Colors.white)),
+            content:
+                Text('Erro: $e', style: const TextStyle(color: Colors.white)),
             backgroundColor: AppTheme.errorColor,
             duration: const Duration(seconds: 3),
           ),
@@ -423,7 +427,8 @@ class _CalendarGrid extends StatelessWidget {
     if (configuracaoAgenda == null) return null;
 
     // 4. Dia fora dos dias de trabalho
-    final diaSemana = data.weekday % 7; // Dart weekday: 1=Seg...7=Dom → 0=Dom...6=Sab
+    final diaSemana =
+        data.weekday % 7; // Dart weekday: 1=Seg...7=Dom → 0=Dom...6=Sab
     if (!configuracaoAgenda!.diasTrabalho.contains(diaSemana)) {
       return StatusDisponibilidade.bloqueado;
     }
@@ -457,8 +462,8 @@ class _CalendarGrid extends StatelessWidget {
           a.status != StatusAgendamento.finalizado);
 
       final statusEfetivo = _statusEfetivo(data, disp);
-      final isRecorrente = disp == null &&
-          bloqueiosRecorrentes.any((r) => r.aplicaNaData(data));
+      final isRecorrente =
+          disp == null && bloqueiosRecorrentes.any((r) => r.aplicaNaData(data));
 
       Color bg;
       Color textColor;
@@ -469,9 +474,8 @@ class _CalendarGrid extends StatelessWidget {
         textColor = AppTheme.accentBlue;
       } else if (statusEfetivo == null) {
         // Sem configuração → cinza neutro
-        bg = isPast
-            ? AppTheme.colorBorder.withAlpha(40)
-            : AppTheme.colorSurface;
+        bg =
+            isPast ? AppTheme.colorBorder.withAlpha(40) : AppTheme.colorSurface;
         textColor = isPast
             ? AppTheme.colorSubtext.withAlpha(80)
             : AppTheme.colorSubtext;
@@ -480,9 +484,7 @@ class _CalendarGrid extends StatelessWidget {
         bg = isPast
             ? const Color(0xFFFFCDD2).withAlpha(50)
             : const Color(0xFFFFEBEE);
-        textColor = isPast
-            ? Colors.red.withAlpha(80)
-            : const Color(0xFFE53935);
+        textColor = isPast ? Colors.red.withAlpha(80) : const Color(0xFFE53935);
       } else {
         // Disponível → verde
         bg = isPast
@@ -505,8 +507,7 @@ class _CalendarGrid extends StatelessWidget {
               border: isHoje
                   ? Border.all(color: AppTheme.accentBlue, width: 2)
                   : statusEfetivo == StatusDisponibilidade.bloqueado && !isPast
-                      ? Border.all(
-                          color: const Color(0xFFEF9A9A), width: 1)
+                      ? Border.all(color: const Color(0xFFEF9A9A), width: 1)
                       : null,
             ),
             child: Stack(
@@ -516,15 +517,15 @@ class _CalendarGrid extends StatelessWidget {
                   const Positioned(
                     top: 2,
                     right: 3,
-                    child: Icon(Icons.repeat, size: 9,
-                        color: Color(0xFFE53935)),
+                    child:
+                        Icon(Icons.repeat, size: 9, color: Color(0xFFE53935)),
                   ),
                 if (!isPast && temAgendamento)
                   Positioned(
                     top: 2,
                     right: isRecorrente ? 14 : 3,
-                    child: Icon(Icons.circle, size: 6,
-                        color: AppTheme.accentBlue.withAlpha(200)),
+                    child: Icon(Icons.circle,
+                        size: 6, color: AppTheme.accentBlue.withAlpha(200)),
                   ),
                 Center(
                   child: Text(
@@ -533,9 +534,11 @@ class _CalendarGrid extends StatelessWidget {
                       fontSize: 14,
                       fontWeight: isHoje ? FontWeight.w700 : FontWeight.w500,
                       color: isHoje ? AppTheme.accentBlue : textColor,
-                      decoration: statusEfetivo == StatusDisponibilidade.bloqueado && !temAgendamento
-                          ? TextDecoration.lineThrough
-                          : null,
+                      decoration:
+                          statusEfetivo == StatusDisponibilidade.bloqueado &&
+                                  !temAgendamento
+                              ? TextDecoration.lineThrough
+                              : null,
                       decorationColor: const Color(0xFFEF9A9A),
                     ),
                   ),
@@ -702,14 +705,43 @@ class _DayOptionsSheet extends StatelessWidget {
   });
 
   String _formatarData(DateTime d) {
-    const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const dias = [
+      'Segunda',
+      'Terça',
+      'Quarta',
+      'Quinta',
+      'Sexta',
+      'Sábado',
+      'Domingo'
+    ];
+    const meses = [
+      'Jan',
+      'Fev',
+      'Mar',
+      'Abr',
+      'Mai',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Set',
+      'Out',
+      'Nov',
+      'Dez'
+    ];
     return '${dias[d.weekday - 1]}, ${d.day} de ${meses[d.month - 1]}';
   }
 
   String _nomeDiaSemana(int weekday) {
     // Dart weekday: 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab, 7=Dom
-    const nomes = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'];
+    const nomes = [
+      'Segunda-feira',
+      'Terça-feira',
+      'Quarta-feira',
+      'Quinta-feira',
+      'Sexta-feira',
+      'Sábado',
+      'Domingo'
+    ];
     return nomes[(weekday - 1).clamp(0, 6)];
   }
 
@@ -764,18 +796,21 @@ class _DayOptionsSheet extends StatelessWidget {
             ...agendamentos.map(
               (a) => Container(
                 margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: AppTheme.accentBlue.withAlpha(14),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.calendar_month, size: 14, color: AppTheme.accentBlue),
+                    const Icon(Icons.calendar_month,
+                        size: 14, color: AppTheme.accentBlue),
                     const SizedBox(width: 8),
                     Text(
                       '${a.tipoServico.label} • ${a.horarioFormatado}',
-                      style: const TextStyle(fontSize: 13, color: AppTheme.accentBlue),
+                      style: const TextStyle(
+                          fontSize: 13, color: AppTheme.accentBlue),
                     ),
                   ],
                 ),

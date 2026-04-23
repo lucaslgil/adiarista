@@ -2,6 +2,7 @@
 import 'package:provider/provider.dart';
 import '../../config/theme.dart';
 import '../../models/agendamento_diarista.dart';
+import '../../models/bloqueio_recorrente.dart';
 import '../../models/configuracao_agenda.dart';
 import '../../models/diarista_disponibilidade.dart';
 import '../../services/agenda_service.dart';
@@ -30,11 +31,35 @@ class _AgendaClienteScreenState extends State<AgendaClienteScreen> {
   DateTime _mesSelecionado = DateTime.now();
   Map<String, DiaristaDisponibilidade> _disponibilidades = {};
   Map<String, List<AgendamentoDiarista>> _agendamentos = {};
+  List<BloqueioRecorrente> _bloqueiosRecorrentes = [];
+  ConfiguracaoAgenda? _configuracaoAgenda;
 
   @override
   void initState() {
     super.initState();
-    _carregarMes();
+    _carregarTudo();
+  }
+
+  Future<void> _carregarTudo() async {
+    await Future.wait([
+      _carregarMes(),
+      _carregarConfigRecorrentes(),
+    ]);
+  }
+
+  Future<void> _carregarConfigRecorrentes() async {
+    try {
+      final config =
+          await _agendaService.getConfiguracaoAgenda(widget.diaristaId);
+      final bloqueios = await _agendaService.getBloqueiosRecorrentes(
+          diaristaId: widget.diaristaId);
+      if (mounted) {
+        setState(() {
+          _configuracaoAgenda = config;
+          _bloqueiosRecorrentes = bloqueios;
+        });
+      }
+    } catch (_) {}
   }
 
   String _chave(DateTime d) =>
@@ -87,10 +112,32 @@ class _AgendaClienteScreenState extends State<AgendaClienteScreen> {
     _carregarMes();
   }
 
+  /// Retorna o status efetivo do dia para a diarista (mesma lógica do worker).
+  StatusDisponibilidade? _statusEfetivo(
+      DateTime data, DiaristaDisponibilidade? dispManual) {
+    if (dispManual != null) return dispManual.status;
+
+    for (final regra in _bloqueiosRecorrentes) {
+      if (regra.aplicaNaData(data)) return StatusDisponibilidade.bloqueado;
+    }
+
+    if (_configuracaoAgenda == null) return null;
+
+    final diaSemana = data.weekday % 7;
+    if (!_configuracaoAgenda!.diasTrabalho.contains(diaSemana)) {
+      return StatusDisponibilidade.bloqueado;
+    }
+
+    return StatusDisponibilidade.integral;
+  }
+
   void _abrirSolicitacao(DateTime data) {
     final chave = _chave(data);
     final disp = _disponibilidades[chave];
-    if (disp == null || disp.status == StatusDisponibilidade.bloqueado) return;
+    final statusEfetivo = _statusEfetivo(data, disp);
+
+    if (statusEfetivo == null ||
+        statusEfetivo == StatusDisponibilidade.bloqueado) return;
 
     final ags = _agendamentos[chave] ?? [];
     final tiposDisponiveis = AgendaValidationService.recomendarTipos(
@@ -267,6 +314,8 @@ class _AgendaClienteScreenState extends State<AgendaClienteScreen> {
               mes: _mesSelecionado,
               disponibilidades: _disponibilidades,
               agendamentos: _agendamentos,
+              bloqueiosRecorrentes: _bloqueiosRecorrentes,
+              configuracaoAgenda: _configuracaoAgenda,
               onDiaDisponivel: _abrirSolicitacao,
             ),
           ),
@@ -328,17 +377,40 @@ class _ClientCalendarGrid extends StatelessWidget {
   final DateTime mes;
   final Map<String, DiaristaDisponibilidade> disponibilidades;
   final Map<String, List<AgendamentoDiarista>> agendamentos;
+  final List<BloqueioRecorrente> bloqueiosRecorrentes;
+  final ConfiguracaoAgenda? configuracaoAgenda;
   final void Function(DateTime) onDiaDisponivel;
 
   const _ClientCalendarGrid({
     required this.mes,
     required this.disponibilidades,
     required this.agendamentos,
+    required this.bloqueiosRecorrentes,
+    required this.configuracaoAgenda,
     required this.onDiaDisponivel,
   });
 
   String _chave(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Mesma hierarquia do worker: override manual > bloqueio recorrente > config de dias
+  StatusDisponibilidade? _statusEfetivo(
+      DateTime data, DiaristaDisponibilidade? dispManual) {
+    if (dispManual != null) return dispManual.status;
+
+    for (final regra in bloqueiosRecorrentes) {
+      if (regra.aplicaNaData(data)) return StatusDisponibilidade.bloqueado;
+    }
+
+    if (configuracaoAgenda == null) return null;
+
+    final diaSemana = data.weekday % 7;
+    if (!configuracaoAgenda!.diasTrabalho.contains(diaSemana)) {
+      return StatusDisponibilidade.bloqueado;
+    }
+
+    return StatusDisponibilidade.integral;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -361,9 +433,11 @@ class _ClientCalendarGrid extends StatelessWidget {
           data.isBefore(DateTime.now().subtract(const Duration(days: 1)));
       final isHoje = _chave(data) == _chave(DateTime.now());
 
+      final statusEfetivo = _statusEfetivo(data, disp);
+
       // Calcula se ainda tem vaga
-      final temVaga = disp != null &&
-          disp.status != StatusDisponibilidade.bloqueado &&
+      final temVaga = statusEfetivo != null &&
+          statusEfetivo != StatusDisponibilidade.bloqueado &&
           AgendaValidationService.recomendarTipos(
                   agendamentosExistentes: ags, data: data)
               .isNotEmpty;
@@ -376,7 +450,7 @@ class _ClientCalendarGrid extends StatelessWidget {
         bg = AppTheme.colorSurface;
         borderColor = AppTheme.colorBorder;
         textColor = AppTheme.colorSubtext.withAlpha(120);
-      } else if (disp.status == StatusDisponibilidade.meioPeriodo) {
+      } else if (statusEfetivo == StatusDisponibilidade.meioPeriodo) {
         bg = AppTheme.warningColor.withAlpha(40);
         borderColor = AppTheme.warningColor;
         textColor = AppTheme.warningColor;
@@ -429,7 +503,7 @@ class _ClientCalendarGrid extends StatelessWidget {
 
 class _SolicitacaoSheet extends StatefulWidget {
   final DateTime data;
-  final DiaristaDisponibilidade disponibilidade;
+  final DiaristaDisponibilidade? disponibilidade;
   final List<TipoServico> tiposDisponiveis;
   final String diaristaNome;
   final Future<void> Function(TipoServico tipo, String? obs) onSolicitar;

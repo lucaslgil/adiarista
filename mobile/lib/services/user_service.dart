@@ -1,6 +1,8 @@
+import 'dart:math';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user.dart' as models;
 import '../models/diarista_perfil.dart';
+import '../models/endereco_cliente.dart';
 import '../models/solicitacao.dart';
 import '../models/avaliacao.dart';
 
@@ -11,11 +13,8 @@ class UserService {
   /// Obter dados do usuário pelo ID
   Future<models.User?> getUserById(String userId) async {
     try {
-      final response = await _supabase
-          .from('users')
-          .select()
-          .eq('id', userId)
-          .single();
+      final response =
+          await _supabase.from('users').select().eq('id', userId).single();
 
       return models.User.fromJson(response as Map<String, dynamic>);
     } catch (e) {
@@ -75,6 +74,12 @@ class UserService {
     String? regiao,
     List<String>? especialidades,
     bool? ativo,
+    // Campos de território e raio
+    double? latitude,
+    double? longitude,
+    List<String>? cidadesAtendidas,
+    bool? limitarPorRaio,
+    double? raioKm,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -86,33 +91,45 @@ class UserService {
       if (regiao != null) updates['regiao'] = regiao;
       if (especialidades != null) updates['especialidades'] = especialidades;
       if (ativo != null) updates['ativo'] = ativo;
+      if (latitude != null) updates['latitude'] = latitude;
+      if (longitude != null) updates['longitude'] = longitude;
+      if (cidadesAtendidas != null) {
+        updates['cidades_atendidas'] = cidadesAtendidas;
+      }
+      if (limitarPorRaio != null) updates['limitar_por_raio'] = limitarPorRaio;
+      if (raioKm != null) updates['raio_km'] = raioKm;
 
-      await _supabase
-          .from('diaristas')
-          .update(updates)
-          .eq('user_id', userId);
+      await _supabase.from('diaristas').update(updates).eq('user_id', userId);
     } catch (e) {
       throw Exception('Erro ao atualizar perfil da diarista: $e');
     }
   }
 
-  /// Listar diaristas disponíveis filtradas por região e com preços configurados
+  /// Listar diaristas disponíveis com filtro duplo: Territorial (cidade) + Raio de Ação.
+  ///
+  /// Se [enderecoServico] for fornecido:
+  ///   1. Filtro mandatório: apenas diaristas cujo [cidades_atendidas] contém a
+  ///      cidade do endereço selecionado (comparação normalizada).
+  ///   2. Filtro condicional: se a diarista tiver [limitar_por_raio] ativado e
+  ///      ambas as coordenadas (diarista e endereço) estiverem disponíveis, a
+  ///      distância Haversine é calculada e a diarista é descartada se exceder
+  ///      [raio_km].
   Future<List<DiaristaPerfil>> getDiaristasDisponiveis({
     String regiao = '',
     double? precoMinimo,
     double? precoMaximo,
     double? avaliacaoMinima,
+    EnderecoCliente? enderecoServico,
   }) async {
     try {
       var query = _supabase
           .from('diaristas')
-          .select()
+          .select('*, users!inner(nome)')
           .eq('ativo', true);
 
       if (regiao.isNotEmpty) {
         query = query.eq('regiao', regiao);
       }
-
       if (precoMinimo != null) {
         query = query.gte('preco', precoMinimo);
       }
@@ -124,9 +141,47 @@ class UserService {
       }
 
       final response = await query;
-      final diaristas = (response as List)
+      List<DiaristaPerfil> diaristas = (response as List)
           .map((e) => DiaristaPerfil.fromJson(e as Map<String, dynamic>))
           .toList();
+
+      // ── Filtro Duplo (Territorial + Raio) ────────────────────────────────
+      if (enderecoServico != null) {
+        final uf = enderecoServico.estado.trim();
+        final cidadeCliente = _normalizarCidade(
+          uf.isNotEmpty
+              ? '${enderecoServico.cidade} - $uf'
+              : enderecoServico.cidade,
+        );
+
+        diaristas = diaristas.where((d) {
+          // Filtro 1 — Territorial (mandatório)
+          // Diaristas com lista vazia são descartadas (sem território definido).
+          if (d.cidadesAtendidas.isEmpty) return false;
+          final atendeCidade =
+              d.cidadesAtendidas.map(_normalizarCidade).contains(cidadeCliente);
+          if (!atendeCidade) return false;
+
+          // Filtro 2 — Raio de Ação (condicional)
+          if (d.limitarPorRaio) {
+            final dLat = d.lat;
+            final dLng = d.lng;
+            final cLat = enderecoServico.lat;
+            final cLng = enderecoServico.lng;
+
+            // Se coordenadas não disponíveis, conserva a diarista (benefício da dúvida)
+            if (dLat == null || dLng == null || cLat == null || cLng == null) {
+              return true;
+            }
+
+            final distancia = _haversineKm(dLat, dLng, cLat, cLng);
+            if (distancia > d.raioKm) return false;
+          }
+
+          return true;
+        }).toList();
+      }
+      // ─────────────────────────────────────────────────────────────────────
 
       // Filtrar somente diaristas com ao menos 1 preço configurado
       try {
@@ -136,13 +191,10 @@ class UserService {
             .gt('valor_minimo', 0);
 
         final idsComPrecos = <String>{
-          for (final row in precosResp as List)
-            row['usuario_id'] as String,
+          for (final row in precosResp as List) row['usuario_id'] as String,
         };
 
-        return diaristas
-            .where((d) => idsComPrecos.contains(d.userId))
-            .toList();
+        return diaristas.where((d) => idsComPrecos.contains(d.userId)).toList();
       } catch (_) {
         // Tabela ainda não criada; retorna sem filtro de preços
         return diaristas;
@@ -151,6 +203,36 @@ class UserService {
       throw Exception('Erro ao buscar diaristas: $e');
     }
   }
+
+  // ── Helpers privados ──────────────────────────────────────────────────────
+
+  /// Normaliza o nome de cidade para comparação (minúsculas, sem acentos).
+  static String _normalizarCidade(String cidade) {
+    return cidade
+        .toLowerCase()
+        .trim()
+        // Remove diacríticos comuns do português
+        .replaceAll(RegExp(r'[áàãâä]'), 'a')
+        .replaceAll(RegExp(r'[éèêë]'), 'e')
+        .replaceAll(RegExp(r'[íìîï]'), 'i')
+        .replaceAll(RegExp(r'[óòõôö]'), 'o')
+        .replaceAll(RegExp(r'[úùûü]'), 'u')
+        .replaceAll(RegExp(r'[ç]'), 'c');
+  }
+
+  /// Distância em km entre dois pontos via fórmula de Haversine.
+  static double _haversineKm(
+      double lat1, double lon1, double lat2, double lon2) {
+    const earthRadiusKm = 6371.0;
+    final dLat = _toRad(lat2 - lat1);
+    final dLon = _toRad(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRad(lat1)) * cos(_toRad(lat2)) * sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  static double _toRad(double deg) => deg * pi / 180;
 
   // ============== SOLICITAÇÃO OPERATIONS ==============
 
@@ -259,14 +341,11 @@ class UserService {
     required String diaristId,
   }) async {
     try {
-      await _supabase
-          .from('solicitacoes')
-          .update({
-            'diarista_id': diaristId,
-            'status': 'aceita',
-            'atualizado_em': DateTime.now().toIso8601String(),
-          })
-          .eq('id', solicitacaoId);
+      await _supabase.from('solicitacoes').update({
+        'diarista_id': diaristId,
+        'status': 'aceita',
+        'atualizado_em': DateTime.now().toIso8601String(),
+      }).eq('id', solicitacaoId);
     } catch (e) {
       throw Exception('Erro ao aceitar solicitação: $e');
     }
@@ -275,14 +354,11 @@ class UserService {
   /// Recusar solicitação
   Future<void> recusarSolicitacao(String solicitacaoId) async {
     try {
-      await _supabase
-          .from('solicitacoes')
-          .update({
-            'diarista_id': null,
-            'status': 'pendente',
-            'atualizado_em': DateTime.now().toIso8601String(),
-          })
-          .eq('id', solicitacaoId);
+      await _supabase.from('solicitacoes').update({
+        'diarista_id': null,
+        'status': 'pendente',
+        'atualizado_em': DateTime.now().toIso8601String(),
+      }).eq('id', solicitacaoId);
     } catch (e) {
       throw Exception('Erro ao recusar solicitação: $e');
     }
@@ -294,16 +370,13 @@ class UserService {
     required String novoStatus,
   }) async {
     try {
-      await _supabase
-          .from('solicitacoes')
-          .update({
-            'status': novoStatus,
-            'concluida_em': novoStatus == 'finalizada'
-                ? DateTime.now().toIso8601String()
-                : null,
-            'atualizado_em': DateTime.now().toIso8601String(),
-          })
-          .eq('id', solicitacaoId);
+      await _supabase.from('solicitacoes').update({
+        'status': novoStatus,
+        'concluida_em': novoStatus == 'finalizada'
+            ? DateTime.now().toIso8601String()
+            : null,
+        'atualizado_em': DateTime.now().toIso8601String(),
+      }).eq('id', solicitacaoId);
     } catch (e) {
       throw Exception('Erro ao atualizar status: $e');
     }
@@ -355,20 +428,20 @@ class UserService {
   Future<void> _atualizarAvaliacaoMedia(String diaristId) async {
     try {
       final avaliacoes = await getAvaliacoesDiarista(diaristId);
-      
+
       if (avaliacoes.isEmpty) {
         return;
       }
 
       final media = avaliacoes.fold<double>(
-        0,
-        (sum, avaliacao) => sum + avaliacao.nota,
-      ) / avaliacoes.length;
+            0,
+            (sum, avaliacao) => sum + avaliacao.nota,
+          ) /
+          avaliacoes.length;
 
       await _supabase
           .from('diaristas')
-          .update({'avaliacao_media': media})
-          .eq('user_id', diaristId);
+          .update({'avaliacao_media': media}).eq('user_id', diaristId);
     } catch (e) {
       throw Exception('Erro ao atualizar media de avaliacao: $e');
     }

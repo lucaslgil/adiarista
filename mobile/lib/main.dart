@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,6 +7,7 @@ import 'config/router.dart';
 import 'config/supabase_config.dart';
 import 'config/theme.dart';
 import 'services/auth_service.dart';
+import 'services/endereco_service.dart';
 import 'services/precos_service.dart';
 import 'services/user_service.dart';
 
@@ -35,6 +37,7 @@ class MyApp extends StatelessWidget {
         p.Provider(create: (_) => AuthService()),
         p.Provider(create: (_) => UserService()),
         p.Provider(create: (_) => PrecosService()),
+        p.Provider(create: (_) => EnderecoService()),
       ],
       child: MaterialApp.router(
         title: 'aDiarista',
@@ -42,9 +45,16 @@ class MyApp extends StatelessWidget {
         darkTheme: AppTheme.darkTheme,
         routerConfig: AppRouter.router,
         debugShowCheckedModeBanner: false,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('pt', 'BR'),
+          Locale('en', 'US'),
+        ],
       ),
     );
   }
 }
-
-

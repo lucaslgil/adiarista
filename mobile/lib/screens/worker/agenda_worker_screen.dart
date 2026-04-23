@@ -154,12 +154,20 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
             for (final r in recorrentesAtivos) {
               await _agendaService.removerBloqueioRecorrente(id: r.id);
             }
+            // Remove também o override manual deste dia específico para
+            // que o dia volte ao estado normal (disponível)
+            await _agendaService.removerDisponibilidade(
+              diaristaId: userId,
+              data: data,
+            );
           } else {
+            // dataInicio = hoje → bloqueia todas as ocorrências desse
+            // dia da semana a partir de agora, em qualquer mês
             await _agendaService.salvarBloqueioRecorrente(
               diaristaId: userId,
               tipo: TipoRecorrencia.semanal,
               valor: data.weekday % 7, // 0=Dom...6=Sab
-              dataInicio: DateTime(data.year, data.month, data.day),
+              dataInicio: DateTime.now(),
             );
             // Bloqueia também este dia específico
             await _agendaService.salvarDisponibilidade(
@@ -175,11 +183,15 @@ class _AgendaWorkerScreenState extends State<AgendaWorkerScreen> {
             diaristaId: userId,
             data: data,
           );
-          // Se o dia não está nos dias de trabalho, salva override explícito
+          // Precisa de override manual 'integral' se:
+          // 1. O dia não está nos dias de trabalho configurados, OU
+          // 2. Existe bloqueio recorrente ativo que bloquearia esse dia
+          //    (o override manual tem prioridade sobre o recorrente)
           final diaSemana = data.weekday % 7;
           final naoDiaTrab = _configuracaoAgenda != null &&
               !_configuracaoAgenda!.diasTrabalho.contains(diaSemana);
-          if (naoDiaTrab) {
+          final temBloqueioRecorrente = recorrentesAtivos.isNotEmpty;
+          if (naoDiaTrab || temBloqueioRecorrente) {
             await _agendaService.salvarDisponibilidade(
               diaristaId: userId,
               data: data,
@@ -393,7 +405,7 @@ class _CalendarGrid extends StatelessWidget {
 
   /// Retorna o status efetivo do dia considerando a hierarquia:
   /// 1. Override manual (disponibilidade específica para essa data)
-  /// 2. Bloqueio recorrente semanal ativo
+  /// 2. Bloqueio recorrente semanal ativo (independente de configuração)
   /// 3. Dias de trabalho configurados
   /// 4. null = sem configuração (jornada não definida)
   StatusDisponibilidade? _statusEfetivo(
@@ -401,13 +413,14 @@ class _CalendarGrid extends StatelessWidget {
     // 1. Override manual tem prioridade absoluta
     if (dispManual != null) return dispManual.status;
 
-    // 2. Sem configuração de jornada → inconclusivo
-    if (configuracaoAgenda == null) return null;
-
-    // 3. Bloqueio recorrente ativo
+    // 2. Bloqueio recorrente ativo — deve ser verificado ANTES do null check
+    // de configuracaoAgenda, pois recorrentes funcionam independentemente
     for (final regra in bloqueiosRecorrentes) {
       if (regra.aplicaNaData(data)) return StatusDisponibilidade.bloqueado;
     }
+
+    // 3. Sem configuração de jornada → inconclusivo
+    if (configuracaoAgenda == null) return null;
 
     // 4. Dia fora dos dias de trabalho
     final diaSemana = data.weekday % 7; // Dart weekday: 1=Seg...7=Dom → 0=Dom...6=Sab
@@ -695,7 +708,8 @@ class _DayOptionsSheet extends StatelessWidget {
   }
 
   String _nomeDiaSemana(int weekday) {
-    const nomes = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    // Dart weekday: 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sab, 7=Dom
+    const nomes = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'];
     return nomes[(weekday - 1).clamp(0, 6)];
   }
 

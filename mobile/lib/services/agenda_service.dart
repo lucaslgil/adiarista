@@ -201,12 +201,13 @@ class AgendaService {
           .select()
           .eq('diarista_id', diaristaId)
           .eq('ativo', true)
-          .order('created_at');
+          .order('criado_em');
 
       return (response as List)
           .map((e) => BloqueioRecorrente.fromJson(e as Map<String, dynamic>))
           .toList();
     } catch (e) {
+      print('❌ [ERROR] getBloqueiosRecorrentes: $e');
       return [];
     }
   }
